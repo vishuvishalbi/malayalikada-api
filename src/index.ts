@@ -21,7 +21,15 @@ import { itemRequestRoutes } from './presentation/routes/itemRequest.routes';
 import { adminRoutes } from './presentation/routes/admin.routes';
 import { bannerRoutes } from './presentation/routes/banner.routes';
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+  logger: {
+    level: process.env.LOG_LEVEL || 'info',
+    transport: {
+      target: 'pino/file',
+      options: { destination: './logs/app.log', mkdir: true },
+    },
+  },
+});
 
 app.register(cors, { origin: config.corsOrigin });
 app.register(jwt, { secret: config.jwtSecret });
