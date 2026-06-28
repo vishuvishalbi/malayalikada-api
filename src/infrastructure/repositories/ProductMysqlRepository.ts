@@ -4,7 +4,7 @@ import { IProduct, IProductImage } from '../../domain/entities/Product';
 import { IProductRepository, ProductListFilters } from '../../domain/repositories/IProductRepository';
 
 export class ProductMysqlRepository implements IProductRepository {
-  async findAll(filters: ProductListFilters): Promise<{ items: IProduct[]; total: number }> {
+  async findAll(filters: ProductListFilters): Promise<{ products: IProduct[]; total: number }> {
     const conditions: string[] = ['p.is_active = 1', 'p.deleted_at IS NULL'];
     const params: unknown[] = [];
 
@@ -25,10 +25,12 @@ export class ProductMysqlRepository implements IProductRepository {
 
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT p.*,
-              pi.url AS first_image_url
+              c.name AS category_name,
+              COALESCE(pi.url, CONCAT('/uploads/', pi.filename)) AS first_image_url
        FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN (
-         SELECT pi2.product_id, CONCAT('/uploads/', pi2.filename) AS url
+         SELECT pi2.product_id, pi2.url, pi2.filename
          FROM product_images pi2
          INNER JOIN (
            SELECT product_id, MIN(sort_order) AS min_sort
@@ -45,12 +47,15 @@ export class ProductMysqlRepository implements IProductRepository {
       `SELECT COUNT(*) as total FROM products p ${where}`,
       params
     );
-    return { items: rows as IProduct[], total: (countRows[0] as RowDataPacket).total };
+    return { products: rows as IProduct[], total: (countRows[0] as RowDataPacket).total };
   }
 
   async findById(id: number): Promise<IProduct | null> {
     const [rows] = await db.query<RowDataPacket[]>(
-      'SELECT * FROM products WHERE id = ? AND deleted_at IS NULL',
+      `SELECT p.*, c.name AS category_name
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       WHERE p.id = ? AND p.deleted_at IS NULL`,
       [id]
     );
     return (rows[0] as IProduct) || null;
@@ -90,9 +95,10 @@ export class ProductMysqlRepository implements IProductRepository {
   }
 
   async addImage(productId: number, filename: string, sortOrder: number): Promise<IProductImage> {
+    const path = `/uploads/${filename}`;
     const [result] = await db.query<ResultSetHeader>(
-      'INSERT INTO product_images (product_id, filename, sort_order) VALUES (?, ?, ?)',
-      [productId, filename, sortOrder]
+      'INSERT INTO product_images (product_id, filename, path, sort_order) VALUES (?, ?, ?, ?)',
+      [productId, filename, path, sortOrder]
     );
     const [rows] = await db.query<RowDataPacket[]>(
       'SELECT * FROM product_images WHERE id = ?',

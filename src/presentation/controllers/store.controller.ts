@@ -7,7 +7,8 @@ export class StoreController {
   constructor(private service: StoreService) {}
 
   list = async (_req: FastifyRequest, reply: FastifyReply) => {
-    reply.send(await this.service.list());
+    const stores = await this.service.list();
+    reply.send({ stores });
   };
 
   getById = async (request: FastifyRequest, reply: FastifyReply) => {

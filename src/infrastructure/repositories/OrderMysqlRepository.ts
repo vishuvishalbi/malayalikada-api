@@ -48,7 +48,7 @@ export class OrderMysqlRepository implements IOrderRepository {
     }
   }
 
-  async findByCustomer(customerId: number, offset: number, limit: number): Promise<{ items: IOrder[]; total: number }> {
+  async findByCustomer(customerId: number, offset: number, limit: number): Promise<{ orders: IOrder[]; total: number }> {
     const [rows] = await db.query<RowDataPacket[]>(
       'SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
       [customerId, limit, offset]
@@ -57,17 +57,19 @@ export class OrderMysqlRepository implements IOrderRepository {
       'SELECT COUNT(*) as total FROM orders WHERE customer_id = ?',
       [customerId]
     );
-    return { items: rows as IOrder[], total: (countRows[0] as any).total };
+    return { orders: rows as IOrder[], total: (countRows[0] as any).total };
   }
 
-  async findById(id: number): Promise<(IOrder & { orderItems: IOrderItem[] }) | null> {
+  async findById(id: number): Promise<(IOrder & { orderItems: (IOrderItem & { name: string })[] }) | null> {
     const [rows] = await db.query<RowDataPacket[]>('SELECT * FROM orders WHERE id = ?', [id]);
     if (!rows[0]) return null;
     const [itemRows] = await db.query<RowDataPacket[]>(
-      'SELECT * FROM order_items WHERE order_id = ?',
+      `SELECT oi.*, p.name FROM order_items oi
+       LEFT JOIN products p ON p.id = oi.product_id
+       WHERE oi.order_id = ?`,
       [id]
     );
-    return { ...(rows[0] as IOrder), orderItems: itemRows as IOrderItem[] };
+    return { ...(rows[0] as IOrder), orderItems: itemRows as (IOrderItem & { name: string })[] };
   }
 
   async findWorkerQueue(storeIds: number[]): Promise<IOrder[]> {
@@ -80,7 +82,7 @@ export class OrderMysqlRepository implements IOrderRepository {
     return rows as IOrder[];
   }
 
-  async findAllAdmin(filters: OrderListFilters): Promise<{ items: IOrder[]; total: number }> {
+  async findAllAdmin(filters: OrderListFilters): Promise<{ orders: IOrder[]; total: number }> {
     const conditions: string[] = [];
     const params: unknown[] = [];
 
@@ -98,7 +100,7 @@ export class OrderMysqlRepository implements IOrderRepository {
       `SELECT COUNT(*) as total FROM orders ${where}`,
       params
     );
-    return { items: rows as IOrder[], total: (countRows[0] as any).total };
+    return { orders: rows as IOrder[], total: (countRows[0] as any).total };
   }
 
   async updateStatus(id: number, status: IOrder['status'], actionedBy: number, rejectionReason?: string): Promise<void> {

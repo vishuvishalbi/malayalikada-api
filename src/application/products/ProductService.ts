@@ -24,7 +24,11 @@ export class ProductService {
     const images = await this.repo.getImages(id);
     return {
       ...product,
-      images: images.map(img => ({ ...img, url: this.storage.getUrl(img.filename) })),
+      images: images.map(img => ({
+        ...img,
+        path: img.path ?? `/uploads/${img.filename}`,
+        url: img.url ?? this.storage.getUrl(img.filename),
+      })),
     };
   }
 

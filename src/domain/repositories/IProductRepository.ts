@@ -11,7 +11,7 @@ export interface ProductListFilters {
 }
 
 export interface IProductRepository {
-  findAll(filters: ProductListFilters): Promise<{ items: IProduct[]; total: number }>;
+  findAll(filters: ProductListFilters): Promise<{ products: IProduct[]; total: number }>;
   findById(id: number): Promise<IProduct | null>;
   findByBarcode(barcode: string): Promise<IProduct | null>;
   create(data: Omit<IProduct, 'id' | 'deleted_at' | 'created_at' | 'updated_at' | 'first_image_url'>): Promise<IProduct>;

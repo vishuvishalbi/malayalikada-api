@@ -7,7 +7,8 @@ export class CategoryController {
   constructor(private service: CategoryService) {}
 
   list = async (_req: FastifyRequest, reply: FastifyReply) => {
-    reply.send(await this.service.list());
+    const categories = await this.service.list();
+    reply.send({ categories });
   };
 
   create = async (request: FastifyRequest, reply: FastifyReply) => {

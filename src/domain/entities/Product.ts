@@ -4,6 +4,7 @@ export interface IProduct {
   name: string;
   description: string | null;
   category_id: number;
+  category_name?: string;
   brand: string | null;
   unit: string | null;
   weight: number | null;
@@ -20,6 +21,8 @@ export interface IProductImage {
   id: number;
   product_id: number;
   filename: string;
+  path: string | null;
+  url: string | null;
   sort_order: number;
 }
 

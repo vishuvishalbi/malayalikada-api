@@ -13,16 +13,20 @@ export class OrderController {
   customerHistory = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = customerOrderQuerySchema.safeParse(request.query);
     if (!parsed.success) throw new ValidationError('Invalid query', parsed.error.flatten());
-    reply.send(await this.service.customerHistory(request.user.sub, parsed.data.page, parsed.data.limit));
+    const { orders, total } = await this.service.customerHistory(request.user.sub, parsed.data.page, parsed.data.limit);
+    reply.send({ orders, total });
   };
 
   customerDetail = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };
-    reply.send(await this.service.customerDetail(request.user.sub, Number(id)));
+    const order = await this.service.customerDetail(request.user.sub, Number(id));
+    const { orderItems, ...rest } = order as any;
+    reply.send({ ...rest, items: orderItems ?? [] });
   };
 
   workerQueue = async (request: FastifyRequest, reply: FastifyReply) => {
-    reply.send(await this.service.workerQueue(request.user.storeIds));
+    const orders = await this.service.workerQueue(request.user.storeIds);
+    reply.send(orders);
   };
 
   approve = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -40,7 +44,8 @@ export class OrderController {
   adminList = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = adminOrderQuerySchema.safeParse(request.query);
     if (!parsed.success) throw new ValidationError('Invalid query', parsed.error.flatten());
-    reply.send(await this.service.adminList(parsed.data));
+    const { orders, total } = await this.service.adminList(parsed.data);
+    reply.send({ orders, total });
   };
 
   adminExportCsv = async (request: FastifyRequest, reply: FastifyReply) => {

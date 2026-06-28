@@ -11,10 +11,10 @@ export interface OrderListFilters {
 
 export interface IOrderRepository {
   create(order: Omit<IOrder, 'id' | 'created_at' | 'updated_at'>, items: Omit<IOrderItem, 'id'>[]): Promise<IOrder>;
-  findByCustomer(customerId: number, offset: number, limit: number): Promise<{ items: IOrder[]; total: number }>;
-  findById(id: number): Promise<(IOrder & { orderItems: IOrderItem[] }) | null>;
+  findByCustomer(customerId: number, offset: number, limit: number): Promise<{ orders: IOrder[]; total: number }>;
+  findById(id: number): Promise<(IOrder & { orderItems: (IOrderItem & { name: string })[] }) | null>;
   findWorkerQueue(storeIds: number[]): Promise<IOrder[]>;
-  findAllAdmin(filters: OrderListFilters): Promise<{ items: IOrder[]; total: number }>;
+  findAllAdmin(filters: OrderListFilters): Promise<{ orders: IOrder[]; total: number }>;
   updateStatus(id: number, status: IOrder['status'], actionedBy: number, rejectionReason?: string): Promise<void>;
   deductStock(orderId: number): Promise<void>;
   getExportRows(storeId?: number, from?: string, to?: string): Promise<IOrder[]>;

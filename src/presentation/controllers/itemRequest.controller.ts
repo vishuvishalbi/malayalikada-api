@@ -1,25 +1,57 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ItemRequestService } from '../../application/itemRequests/ItemRequestService';
-import { submitRequestSchema, adminUpdateSchema, adminListQuerySchema } from '../schemas/itemRequest.schema';
+import { adminUpdateSchema, adminListQuerySchema } from '../schemas/itemRequest.schema';
 import { ValidationError } from '../../shared/errors/AppError';
+import { z } from 'zod';
+
+const submitSchema = z.object({
+  item_name: z.string().min(1).max(200),
+  description: z.string().optional(),
+  quantity: z.number().int().positive().default(1),
+  store_id: z.number().int().positive().optional(),
+});
+
+const STATUS_MAP: Record<string, 'pending' | 'approved' | 'rejected'> = {
+  new: 'pending',
+  sourced: 'approved',
+  declined: 'rejected',
+};
+
+function toUiRequest(r: any) {
+  return {
+    id: r.id,
+    item_name: r.product_name,
+    description: r.notes ?? null,
+    quantity: r.quantity ?? 1,
+    status: STATUS_MAP[r.status] ?? r.status,
+    created_at: r.created_at,
+  };
+}
 
 export class ItemRequestController {
   constructor(private service: ItemRequestService) {}
 
   submit = async (request: FastifyRequest, reply: FastifyReply) => {
-    const parsed = submitRequestSchema.safeParse(request.body);
+    const parsed = submitSchema.safeParse(request.body);
     if (!parsed.success) throw new ValidationError('Invalid input', parsed.error.flatten());
-    reply.status(201).send(await this.service.submit(request.user.sub, parsed.data));
+    const { item_name, description, store_id } = parsed.data;
+    const result = await this.service.submit(request.user.sub, {
+      product_name: item_name,
+      notes: description,
+    });
+    reply.status(201).send(toUiRequest(result));
   };
 
   customerList = async (request: FastifyRequest, reply: FastifyReply) => {
-    reply.send(await this.service.customerList(request.user.sub));
+    const rows = await this.service.customerList(request.user.sub);
+    reply.send({ requests: rows.map(toUiRequest) });
   };
 
   adminList = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = adminListQuerySchema.safeParse(request.query);
     if (!parsed.success) throw new ValidationError('Invalid query', parsed.error.flatten());
-    reply.send(await this.service.adminList(parsed.data.store_id, parsed.data.status));
+    const rows = await this.service.adminList(parsed.data.store_id, parsed.data.status);
+    reply.send({ requests: rows.map(toUiRequest) });
   };
 
   updateStatus = async (request: FastifyRequest, reply: FastifyReply) => {
