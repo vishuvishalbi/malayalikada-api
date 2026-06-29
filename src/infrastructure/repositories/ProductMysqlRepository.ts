@@ -1,7 +1,7 @@
 import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import { db } from '../database/connection';
 import { IProduct, IProductImage } from '../../domain/entities/Product';
-import { IProductRepository, ProductListFilters } from '../../domain/repositories/IProductRepository';
+import { IProductRepository, IProductStoreData, ProductListFilters } from '../../domain/repositories/IProductRepository';
 
 export class ProductMysqlRepository implements IProductRepository {
   async findAll(filters: ProductListFilters): Promise<{ products: IProduct[]; total: number }> {
@@ -23,10 +23,20 @@ export class ProductMysqlRepository implements IProductRepository {
     const where = `WHERE ${conditions.join(' AND ')}`;
     const orderBy = filters.sort === 'newest' ? 'p.created_at DESC' : 'p.name ASC';
 
+    const storeJoins = filters.store_id
+      ? `LEFT JOIN store_pricing sp ON sp.product_id = p.id AND sp.store_id = ${Number(filters.store_id)}
+         LEFT JOIN product_stock ps ON ps.product_id = p.id AND ps.store_id = ${Number(filters.store_id)}`
+      : '';
+
+    const storeFields = filters.store_id
+      ? `, sp.price_nzd AS price, COALESCE(ps.quantity, 0) AS stock_quantity, CASE WHEN COALESCE(ps.quantity, 0) > 0 THEN 1 ELSE 0 END AS in_stock`
+      : '';
+
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT p.*,
               c.name AS category_name,
               COALESCE(pi.url, CONCAT('/uploads/', pi.filename)) AS first_image_url
+              ${storeFields}
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN (
@@ -38,6 +48,7 @@ export class ProductMysqlRepository implements IProductRepository {
            GROUP BY product_id
          ) AS mins ON pi2.product_id = mins.product_id AND pi2.sort_order = mins.min_sort
        ) AS pi ON p.id = pi.product_id
+       ${storeJoins}
        ${where}
        ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
@@ -67,6 +78,58 @@ export class ProductMysqlRepository implements IProductRepository {
       [barcode]
     );
     return (rows[0] as IProduct) || null;
+  }
+
+  async findStoreData(productId: number, storeId: number): Promise<IProductStoreData> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT sp.price_nzd AS price, COALESCE(ps.quantity, 0) AS stock_quantity
+       FROM products p
+       LEFT JOIN store_pricing sp ON sp.product_id = p.id AND sp.store_id = ?
+       LEFT JOIN product_stock ps ON ps.product_id = p.id AND ps.store_id = ?
+       WHERE p.id = ? AND p.deleted_at IS NULL`,
+      [storeId, storeId, productId]
+    );
+    const row = rows[0] as RowDataPacket;
+    const stock_quantity = Number(row?.stock_quantity ?? 0);
+    return {
+      price: row?.price != null ? Number(row.price) : null,
+      stock_quantity,
+      in_stock: stock_quantity > 0,
+    };
+  }
+
+  async findRelated(categoryId: number, excludeId: number, storeId?: number, limit = 8): Promise<IProduct[]> {
+    const storeJoins = storeId
+      ? `LEFT JOIN store_pricing sp ON sp.product_id = p.id AND sp.store_id = ${Number(storeId)}
+         LEFT JOIN product_stock ps ON ps.product_id = p.id AND ps.store_id = ${Number(storeId)}`
+      : '';
+    const storeFields = storeId
+      ? `, sp.price_nzd AS price, COALESCE(ps.quantity, 0) AS stock_quantity, CASE WHEN COALESCE(ps.quantity, 0) > 0 THEN 1 ELSE 0 END AS in_stock`
+      : '';
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT p.*,
+              c.name AS category_name,
+              COALESCE(pi.url, CONCAT('/uploads/', pi.filename)) AS first_image_url
+              ${storeFields}
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN (
+         SELECT pi2.product_id, pi2.url, pi2.filename
+         FROM product_images pi2
+         INNER JOIN (
+           SELECT product_id, MIN(sort_order) AS min_sort
+           FROM product_images
+           GROUP BY product_id
+         ) AS mins ON pi2.product_id = mins.product_id AND pi2.sort_order = mins.min_sort
+       ) AS pi ON p.id = pi.product_id
+       ${storeJoins}
+       WHERE p.category_id = ? AND p.id != ? AND p.is_active = 1 AND p.deleted_at IS NULL
+       ORDER BY p.is_featured DESC, p.name ASC
+       LIMIT ?`,
+      [categoryId, excludeId, limit]
+    );
+    return rows as IProduct[];
   }
 
   async create(data: Omit<IProduct, 'id' | 'deleted_at' | 'created_at' | 'updated_at' | 'first_image_url'>): Promise<IProduct> {

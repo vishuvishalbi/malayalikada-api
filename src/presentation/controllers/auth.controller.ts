@@ -49,6 +49,13 @@ export class AuthController {
     reply.send({ token });
   };
 
+  setPreferredStore = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { store_id } = request.body as { store_id: number };
+    if (!store_id || typeof store_id !== 'number') throw new ValidationError('store_id is required');
+    const result = await this.service.setPreferredStore(request.user.sub, store_id);
+    reply.send(result);
+  };
+
   adminResetPassword = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = resetPasswordSchema.safeParse(request.body);
     if (!parsed.success) throw new ValidationError('Invalid input', parsed.error.flatten());

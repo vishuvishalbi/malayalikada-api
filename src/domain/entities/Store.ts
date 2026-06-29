@@ -7,6 +7,8 @@ export interface IStore {
   icon: string | null;
   logo_filename: string | null;
   is_active: boolean;
+  lat: number | null;
+  lng: number | null;
   created_at: Date;
   updated_at: Date;
 }

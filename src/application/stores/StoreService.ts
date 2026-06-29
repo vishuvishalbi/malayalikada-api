@@ -20,13 +20,15 @@ export class StoreService {
     return this.withLogoUrl(store);
   }
 
-  async create(data: { name: string; address: string; phone: string; bank_account?: string; icon?: string }) {
+  async create(data: { name: string; address: string; phone: string; bank_account?: string; icon?: string; lat?: number; lng?: number }) {
     const store = await this.repo.create({
       ...data,
       bank_account: data.bank_account ?? null,
       icon: data.icon ?? null,
       logo_filename: null,
       is_active: true,
+      lat: data.lat ?? null,
+      lng: data.lng ?? null,
     });
     return this.withLogoUrl(store);
   }

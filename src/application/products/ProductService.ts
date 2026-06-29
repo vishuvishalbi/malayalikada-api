@@ -18,17 +18,33 @@ export class ProductService {
     });
   }
 
-  async getById(id: number) {
+  async getById(id: number, storeId?: number) {
     const product = await this.repo.findById(id);
     if (!product) throw new NotFoundError('Product not found');
+
     const images = await this.repo.getImages(id);
+    const mappedImages = images.map(img => ({
+      ...img,
+      path: img.path ?? `/uploads/${img.filename}`,
+      url: img.url ?? this.storage.getUrl(img.filename),
+    }));
+
+    if (!storeId) {
+      return { ...product, images: mappedImages };
+    }
+
+    const [storeData, related] = await Promise.all([
+      this.repo.findStoreData(id, storeId),
+      this.repo.findRelated(product.category_id, id, storeId),
+    ]);
+
     return {
       ...product,
-      images: images.map(img => ({
-        ...img,
-        path: img.path ?? `/uploads/${img.filename}`,
-        url: img.url ?? this.storage.getUrl(img.filename),
-      })),
+      images: mappedImages,
+      price: storeData.price,
+      stock_quantity: storeData.stock_quantity,
+      in_stock: storeData.in_stock,
+      related_products: related,
     };
   }
 

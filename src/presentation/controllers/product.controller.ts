@@ -14,7 +14,8 @@ export class ProductController {
 
   getById = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };
-    reply.send(await this.service.getById(Number(id)));
+    const { store_id } = request.query as { store_id?: string };
+    reply.send(await this.service.getById(Number(id), store_id ? Number(store_id) : undefined));
   };
 
   getByBarcode = async (request: FastifyRequest, reply: FastifyReply) => {

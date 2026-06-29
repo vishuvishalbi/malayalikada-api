@@ -12,4 +12,8 @@ module.exports = {
     directory: './src/infrastructure/database/migrations',
     extension: 'ts',
   },
+  seeds: {
+    directory: './src/infrastructure/database/seeds',
+    extension: 'ts',
+  },
 };

@@ -21,14 +21,14 @@ export class StoreMysqlRepository implements IStoreRepository {
 
   async create(data: Omit<IStore, 'id' | 'created_at' | 'updated_at'>): Promise<IStore> {
     const [result] = await db.query<ResultSetHeader>(
-      'INSERT INTO stores (name, address, phone, bank_account, icon, logo_filename, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [data.name, data.address, data.phone, data.bank_account ?? null, data.icon ?? null, data.logo_filename ?? null, data.is_active ? 1 : 0]
+      'INSERT INTO stores (name, address, phone, bank_account, icon, logo_filename, is_active, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [data.name, data.address, data.phone, data.bank_account ?? null, data.icon ?? null, data.logo_filename ?? null, data.is_active ? 1 : 0, data.lat ?? null, data.lng ?? null]
     );
     return (await this.findById(result.insertId))!;
   }
 
   async update(id: number, data: Partial<Omit<IStore, 'id' | 'created_at' | 'updated_at'>>): Promise<IStore | null> {
-    const ALLOWED = ['name', 'address', 'phone', 'bank_account', 'icon', 'logo_filename', 'is_active'];
+    const ALLOWED = ['name', 'address', 'phone', 'bank_account', 'icon', 'logo_filename', 'is_active', 'lat', 'lng'];
     const entries = Object.entries(data).filter(([k]) => ALLOWED.includes(k));
     if (entries.length === 0) return this.findById(id);
     const fields = entries.map(([k]) => `${k} = ?`).join(', ');

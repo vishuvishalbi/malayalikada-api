@@ -129,6 +129,12 @@ export class AuthService {
     };
   }
 
+  async setPreferredStore(customerId: number, storeId: number) {
+    const updated = await this.customers.update(customerId, { preferred_store_id: storeId });
+    if (!updated) throw new NotFoundError('Customer not found');
+    return { preferredStoreId: updated.preferred_store_id };
+  }
+
   async adminResetPassword(adminId: number, targetId: number, newPassword: string, targetType: 'customer' | 'staff') {
     const hash = await bcrypt.hash(newPassword, 10);
     if (targetType === 'customer') {
