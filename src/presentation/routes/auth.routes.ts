@@ -5,6 +5,8 @@ import { CustomerMysqlRepository } from '../../infrastructure/repositories/Custo
 import { StaffMysqlRepository } from '../../infrastructure/repositories/StaffMysqlRepository';
 import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
+import { registerSchema, loginSchema, resetPasswordSchema } from '../schemas/auth.schema';
+import { toSchema } from '../../infrastructure/plugins/swagger';
 
 export async function authRoutes(app: FastifyInstance) {
   const service = new AuthService(
@@ -13,11 +15,32 @@ export async function authRoutes(app: FastifyInstance) {
   );
   const controller = new AuthController(service);
 
-  app.post('/auth/register', controller.register);
+  app.post('/auth/register', {
+    schema: { body: toSchema(registerSchema), tags: ['Auth'] },
+  }, controller.register);
+
   app.post('/auth/login', {
+    schema: { body: toSchema(loginSchema), tags: ['Auth'] },
     config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
   }, controller.login);
-  app.get('/auth/me', { preHandler: [authenticate] }, controller.me);
-  app.post('/auth/refresh', { preHandler: [authenticate] }, controller.refresh);
-  app.post('/auth/admin/reset-password', { preHandler: [authenticate, requireRole('admin')] }, controller.adminResetPassword);
+
+  app.get('/auth/me', {
+    schema: { security: [{ bearerAuth: [] }], tags: ['Auth'] },
+    preHandler: [authenticate],
+  }, controller.me);
+
+  app.post('/auth/refresh', {
+    schema: { security: [{ bearerAuth: [] }], tags: ['Auth'] },
+    preHandler: [authenticate],
+  }, controller.refresh);
+
+  app.put('/auth/preferred-store', {
+    schema: { security: [{ bearerAuth: [] }], tags: ['Auth'] },
+    preHandler: [authenticate, requireRole('customer')],
+  }, controller.setPreferredStore);
+
+  app.post('/auth/admin/reset-password', {
+    schema: { body: toSchema(resetPasswordSchema), security: [{ bearerAuth: [] }], tags: ['Auth'] },
+    preHandler: [authenticate, requireRole('admin')],
+  }, controller.adminResetPassword);
 }

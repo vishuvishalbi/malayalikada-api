@@ -8,6 +8,7 @@ import staticFiles from '@fastify/static';
 import path from 'path';
 import { config } from './shared/config';
 import { AppError } from './shared/errors/AppError';
+import swaggerPlugin from './infrastructure/plugins/swagger';
 import { authRoutes } from './presentation/routes/auth.routes';
 import { storeRoutes } from './presentation/routes/store.routes';
 import { categoryRoutes } from './presentation/routes/category.routes';
@@ -31,6 +32,7 @@ const app = Fastify({
   },
 });
 
+app.register(swaggerPlugin);
 app.register(cors, { origin: config.corsOrigin });
 app.register(jwt, { secret: config.jwtSecret });
 app.register(rateLimit, { global: false });
