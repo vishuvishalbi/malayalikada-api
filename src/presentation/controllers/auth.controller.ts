@@ -67,4 +67,18 @@ export class AuthController {
     );
     reply.send({ message: 'Password reset successful' });
   };
+
+  updateMe = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { first_name, last_name, address, phone } = request.body as {
+      first_name?: string; last_name?: string; address?: string; phone?: string;
+    };
+    const user = await this.service.updateProfile(request.user.sub, { first_name, last_name, address, phone });
+    reply.send({ user });
+  };
+
+  changePassword = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { old_password, new_password } = request.body as { old_password: string; new_password: string };
+    await this.service.changePassword(request.user.sub, old_password, new_password);
+    reply.send({ message: 'Password updated' });
+  };
 }

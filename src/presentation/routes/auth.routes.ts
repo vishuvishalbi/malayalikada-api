@@ -43,4 +43,14 @@ export async function authRoutes(app: FastifyInstance) {
     schema: { body: toSchema(resetPasswordSchema), security: [{ bearerAuth: [] }], tags: ['Auth'] },
     preHandler: [authenticate, requireRole('admin')],
   }, controller.adminResetPassword);
+
+  app.put('/auth/me', {
+    schema: { security: [{ bearerAuth: [] }], tags: ['Auth'] },
+    preHandler: [authenticate, requireRole('customer')],
+  }, controller.updateMe);
+
+  app.put('/auth/password', {
+    schema: { security: [{ bearerAuth: [] }], tags: ['Auth'] },
+    preHandler: [authenticate, requireRole('customer')],
+  }, controller.changePassword);
 }

@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import { ICustomerRepository } from '../../domain/repositories/ICustomerRepository';
 import { IStaffRepository } from '../../domain/repositories/IStaffRepository';
-import { UnauthorizedError, ConflictError, NotFoundError } from '../../shared/errors/AppError';
+import { UnauthorizedError, ConflictError, NotFoundError, ValidationError } from '../../shared/errors/AppError';
 
 type Role = 'customer' | 'worker' | 'admin';
 
@@ -142,5 +142,31 @@ export class AuthService {
     } else {
       await this.staff.update(targetId, { password_hash: hash });
     }
+  }
+
+  async updateProfile(
+    userId: number,
+    data: { first_name?: string; last_name?: string; address?: string; phone?: string }
+  ) {
+    const updated = await this.customers.update(userId, data);
+    if (!updated) throw new NotFoundError('User not found');
+    return {
+      id: updated.id,
+      name: `${updated.first_name} ${updated.last_name}`.trim(),
+      role: 'customer',
+      preferredStoreId: updated.preferred_store_id ?? null,
+      storeIds: [],
+      address: updated.address ?? null,
+      phone: updated.phone ?? null,
+    };
+  }
+
+  async changePassword(userId: number, oldPassword: string, newPassword: string) {
+    const customer = await this.customers.findById(userId);
+    if (!customer) throw new NotFoundError('User not found');
+    const valid = await bcrypt.compare(oldPassword, customer.password_hash);
+    if (!valid) throw new ValidationError('Current password is incorrect');
+    const hash = await bcrypt.hash(newPassword, 12);
+    await this.customers.update(userId, { password_hash: hash });
   }
 }
