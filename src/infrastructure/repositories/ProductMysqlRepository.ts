@@ -197,6 +197,22 @@ export class ProductMysqlRepository implements IProductRepository {
     return rows as IProductImage[];
   }
 
+  async isFavorited(productId: number, customerId: number): Promise<boolean> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      'SELECT 1 FROM favorites WHERE product_id = ? AND customer_id = ? LIMIT 1',
+      [productId, customerId]
+    );
+    return rows.length > 0;
+  }
+
+  async isNotifyRequested(productId: number, customerId: number, storeId: number): Promise<boolean> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      'SELECT 1 FROM notify_requests WHERE product_id = ? AND customer_id = ? AND store_id = ? LIMIT 1',
+      [productId, customerId, storeId]
+    );
+    return rows.length > 0;
+  }
+
   async findTrending(storeId?: number, limit = 10): Promise<IProduct[]> {
     const storeJoins = storeId
       ? `LEFT JOIN store_pricing sp ON sp.product_id = p.id AND sp.store_id = ${Number(storeId)}

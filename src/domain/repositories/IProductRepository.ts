@@ -21,6 +21,8 @@ export interface IProductRepository {
   findById(id: number): Promise<IProduct | null>;
   findByBarcode(barcode: string): Promise<IProduct | null>;
   findStoreData(productId: number, storeId: number): Promise<IProductStoreData>;
+  isFavorited(productId: number, customerId: number): Promise<boolean>;
+  isNotifyRequested(productId: number, customerId: number, storeId: number): Promise<boolean>;
   findRelated(categoryId: number, excludeId: number, storeId?: number, limit?: number): Promise<IProduct[]>;
   findTrending(storeId?: number, limit?: number): Promise<IProduct[]>;
   create(data: Omit<IProduct, 'id' | 'deleted_at' | 'created_at' | 'updated_at' | 'first_image_url'>): Promise<IProduct>;

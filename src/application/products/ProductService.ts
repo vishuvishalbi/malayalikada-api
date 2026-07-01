@@ -18,7 +18,7 @@ export class ProductService {
     });
   }
 
-  async getById(id: number, storeId?: number) {
+  async getById(id: number, storeId?: number, customerId?: number) {
     const product = await this.repo.findById(id);
     if (!product) throw new NotFoundError('Product not found');
 
@@ -30,12 +30,15 @@ export class ProductService {
     }));
 
     if (!storeId) {
-      return { ...product, images: mappedImages };
+      const isFavorited = customerId ? await this.repo.isFavorited(id, customerId) : false;
+      return { ...product, images: mappedImages, is_favorited: isFavorited };
     }
 
-    const [storeData, related] = await Promise.all([
+    const [storeData, related, isFavorited, isNotifyRequested] = await Promise.all([
       this.repo.findStoreData(id, storeId),
       this.repo.findRelated(product.category_id, id, storeId),
+      customerId ? this.repo.isFavorited(id, customerId) : Promise.resolve(false),
+      customerId ? this.repo.isNotifyRequested(id, customerId, storeId) : Promise.resolve(false),
     ]);
 
     return {
@@ -44,6 +47,8 @@ export class ProductService {
       price: storeData.price,
       stock_quantity: storeData.stock_quantity,
       in_stock: storeData.in_stock,
+      is_favorited: isFavorited,
+      is_notify_requested: isNotifyRequested,
       related_products: related,
     };
   }
