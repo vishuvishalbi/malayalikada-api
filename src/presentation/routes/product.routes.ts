@@ -51,6 +51,48 @@ export async function productRoutes(app: FastifyInstance) {
     reply.send(content);
   });
 
+  // Shopify CSV import
+  const { ShopifyCsvImportService } = await import('../../application/products/ShopifyCsvImportService');
+  const shopifyImportService = new ShopifyCsvImportService();
+
+  app.post('/products/import/shopify-csv', {
+    preHandler: [authenticate, requireRole('admin')],
+  }, async (request, reply) => {
+    const { store_id } = request.query as { store_id?: string };
+    if (!store_id || isNaN(Number(store_id))) {
+      throw new ValidationError('store_id query param is required');
+    }
+    const storeId = Number(store_id);
+
+    const parts = request.parts();
+    let productBuffer: Buffer | null = null;
+    let productFilename = 'shopify-products.csv';
+    let inventoryBuffer: Buffer | undefined;
+
+    for await (const part of parts) {
+      if (part.type === 'file' && part.fieldname === 'products') {
+        productBuffer = await part.toBuffer();
+        productFilename = part.filename || productFilename;
+      } else if (part.type === 'file' && part.fieldname === 'inventory') {
+        inventoryBuffer = await part.toBuffer();
+      }
+    }
+
+    if (!productBuffer) {
+      throw new ValidationError('products file is required');
+    }
+
+    const log = await shopifyImportService.importProducts(
+      productBuffer,
+      productFilename,
+      storeId,
+      request.user.sub,
+      inventoryBuffer,
+    );
+
+    reply.send(log);
+  });
+
   // Reviews
   const { ProductReviewService } = await import('../../application/reviews/ProductReviewService');
   const { ProductReviewMysqlRepository } = await import('../../infrastructure/repositories/ProductReviewMysqlRepository');
