@@ -12,6 +12,8 @@ export interface IProduct {
   is_active: boolean;
   is_featured: boolean;
   first_image_url: string | null;
+  rating?: number;
+  review_count?: number;
   deleted_at: Date | null;
   created_at: Date;
   updated_at: Date;

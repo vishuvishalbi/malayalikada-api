@@ -21,6 +21,8 @@ import { paymentRoutes } from './presentation/routes/payment.routes';
 import { itemRequestRoutes } from './presentation/routes/itemRequest.routes';
 import { adminRoutes } from './presentation/routes/admin.routes';
 import { bannerRoutes } from './presentation/routes/banner.routes';
+import { notifyRequestRoutes } from './presentation/routes/notifyRequest.routes';
+import { favoriteRoutes } from './presentation/routes/favorite.routes';
 
 const app = Fastify({
   logger: {
@@ -65,6 +67,8 @@ app.register(paymentRoutes, { prefix: '/api/v1' });
 app.register(itemRequestRoutes, { prefix: '/api/v1' });
 app.register(adminRoutes, { prefix: '/api/v1' });
 app.register(bannerRoutes, { prefix: '/api/v1' });
+app.register(notifyRequestRoutes, { prefix: '/api/v1' });
+app.register(favoriteRoutes, { prefix: '/api/v1' });
 
 app.get('/health', async () => ({ status: 'ok' }));
 

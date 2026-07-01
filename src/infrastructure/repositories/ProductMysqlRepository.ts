@@ -63,10 +63,14 @@ export class ProductMysqlRepository implements IProductRepository {
 
   async findById(id: number): Promise<IProduct | null> {
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT p.*, c.name AS category_name
+      `SELECT p.*, c.name AS category_name,
+              COALESCE(AVG(pr.rating), 0) AS rating,
+              COUNT(pr.id) AS review_count
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
-       WHERE p.id = ? AND p.deleted_at IS NULL`,
+       LEFT JOIN product_reviews pr ON pr.product_id = p.id
+       WHERE p.id = ? AND p.deleted_at IS NULL
+       GROUP BY p.id, c.name`,
       [id]
     );
     return (rows[0] as IProduct) || null;
@@ -191,5 +195,73 @@ export class ProductMysqlRepository implements IProductRepository {
       [productId]
     );
     return rows as IProductImage[];
+  }
+
+  async findTrending(storeId?: number, limit = 10): Promise<IProduct[]> {
+    const storeJoins = storeId
+      ? `LEFT JOIN store_pricing sp ON sp.product_id = p.id AND sp.store_id = ${Number(storeId)}
+         LEFT JOIN product_stock ps ON ps.product_id = p.id AND ps.store_id = ${Number(storeId)}`
+      : '';
+    const storeFields = storeId
+      ? `, sp.price_nzd AS price, COALESCE(ps.quantity, 0) AS stock_quantity, CASE WHEN COALESCE(ps.quantity, 0) > 0 THEN 1 ELSE 0 END AS in_stock`
+      : '';
+
+    const storeFilter = storeId ? `AND o.store_id = ${Number(storeId)}` : '';
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT p.*,
+              c.name AS category_name,
+              COALESCE(pi.url, CONCAT('/uploads/', pi.filename)) AS first_image_url
+              ${storeFields}
+       FROM products p
+       INNER JOIN (
+         SELECT oi.product_id, COUNT(*) AS order_count
+         FROM order_items oi
+         INNER JOIN orders o ON o.id = oi.order_id ${storeFilter}
+         GROUP BY oi.product_id
+         ORDER BY order_count DESC
+         LIMIT ?
+       ) AS trending ON trending.product_id = p.id
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN (
+         SELECT pi2.product_id, pi2.url, pi2.filename
+         FROM product_images pi2
+         INNER JOIN (
+           SELECT product_id, MIN(sort_order) AS min_sort
+           FROM product_images
+           GROUP BY product_id
+         ) AS mins ON pi2.product_id = mins.product_id AND pi2.sort_order = mins.min_sort
+       ) AS pi ON p.id = pi.product_id
+       ${storeJoins}
+       WHERE p.is_active = 1 AND p.deleted_at IS NULL
+       ORDER BY trending.order_count DESC`,
+      [limit]
+    );
+
+    if ((rows as IProduct[]).length > 0) return rows as IProduct[];
+
+    // Fallback: featured products
+    const [featuredRows] = await db.query<RowDataPacket[]>(
+      `SELECT p.*,
+              c.name AS category_name,
+              COALESCE(pi.url, CONCAT('/uploads/', pi.filename)) AS first_image_url
+              ${storeFields}
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN (
+         SELECT pi2.product_id, pi2.url, pi2.filename
+         FROM product_images pi2
+         INNER JOIN (
+           SELECT product_id, MIN(sort_order) AS min_sort
+           FROM product_images
+           GROUP BY product_id
+         ) AS mins ON pi2.product_id = mins.product_id AND pi2.sort_order = mins.min_sort
+       ) AS pi ON p.id = pi.product_id
+       ${storeJoins}
+       WHERE p.is_active = 1 AND p.deleted_at IS NULL AND p.is_featured = 1
+       ORDER BY p.name ASC
+       LIMIT ?`,
+      [limit]
+    );
+    return featuredRows as IProduct[];
   }
 }

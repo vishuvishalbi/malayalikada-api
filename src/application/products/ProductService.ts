@@ -106,4 +106,8 @@ export class ProductService {
     await this.storage.delete(image.filename);
     await this.repo.removeImage(productId, imageId);
   }
+
+  async trending(storeId?: number) {
+    return this.repo.findTrending(storeId, 10);
+  }
 }

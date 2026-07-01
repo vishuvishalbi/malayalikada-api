@@ -12,8 +12,9 @@ export async function productRoutes(app: FastifyInstance) {
   const service = new ProductService(new ProductMysqlRepository());
   const ctrl = new ProductController(service);
 
-  // Public — barcode must come BEFORE /:id
+  // Public — barcode/trending must come BEFORE /:id
   app.get('/products/barcode/:barcode', ctrl.getByBarcode);
+  app.get('/products/trending', ctrl.trending);
   app.get('/products', ctrl.list);
   app.get('/products/:id', ctrl.getById);
 
@@ -49,4 +50,13 @@ export async function productRoutes(app: FastifyInstance) {
     const content = await fs.readFile(path.resolve(process.cwd(), 'uploads', log.error_report_filename));
     reply.send(content);
   });
+
+  // Reviews
+  const { ProductReviewService } = await import('../../application/reviews/ProductReviewService');
+  const { ProductReviewMysqlRepository } = await import('../../infrastructure/repositories/ProductReviewMysqlRepository');
+  const { ReviewController } = await import('../controllers/review.controller');
+  const reviewCtrl = new ReviewController(new ProductReviewService(new ProductReviewMysqlRepository()));
+
+  app.get('/products/:id/reviews', reviewCtrl.list);
+  app.post('/products/:id/reviews', { preHandler: [authenticate, requireRole('customer')] }, reviewCtrl.create);
 }

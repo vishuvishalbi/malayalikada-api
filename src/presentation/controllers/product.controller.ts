@@ -55,4 +55,9 @@ export class ProductController {
     await this.service.removeImage(Number(id), Number(imageId));
     reply.status(204).send();
   };
+
+  trending = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { store_id } = request.query as { store_id?: string };
+    reply.send(await this.service.trending(store_id ? Number(store_id) : undefined));
+  };
 }
