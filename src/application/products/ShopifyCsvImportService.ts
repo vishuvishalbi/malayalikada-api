@@ -85,15 +85,10 @@ export class ShopifyCsvImportService {
             [productId, row.imageUrl],
           );
           if ((imgExists as RowDataPacket[]).length === 0) {
-            const [imgCount] = await db.query<RowDataPacket[]>(
-              'SELECT COUNT(*) AS cnt FROM product_images WHERE product_id = ?',
-              [productId],
-            );
-            const sortOrder = (imgCount[0] as RowDataPacket).cnt as number;
             await db.query(
               `INSERT INTO product_images (product_id, filename, path, url, sort_order)
-               VALUES (?, '', NULL, ?, ?)`,
-              [productId, row.imageUrl, sortOrder],
+               VALUES (?, '', NULL, ?, 0)`,
+              [productId, row.imageUrl],
             );
           }
         }
@@ -127,7 +122,7 @@ export class ShopifyCsvImportService {
     return this.logs.create({
       filename: productFilename,
       imported_by: staffId,
-      rows_total: rows.length + errors.length,
+      rows_total: rowsOk + rowErrors.length,
       rows_ok: rowsOk,
       rows_failed: rowErrors.length,
       error_report_filename: errorReportFilename,
