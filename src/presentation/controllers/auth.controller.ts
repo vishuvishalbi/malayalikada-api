@@ -6,15 +6,15 @@ import { ValidationError } from '../../shared/errors/AppError';
 export class AuthController {
   constructor(private service: AuthService) {}
 
+  getCaptcha = async (_request: FastifyRequest, reply: FastifyReply) => {
+    reply.send(this.service.generateCaptcha());
+  };
+
   register = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = registerSchema.safeParse(request.body);
     if (!parsed.success) throw new ValidationError('Invalid input', parsed.error.flatten());
     const result = await this.service.register(
-      parsed.data.identifier,
-      parsed.data.identifier_type,
-      parsed.data.password,
-      parsed.data.first_name,
-      parsed.data.last_name,
+      parsed.data,
       (payload) => (request.server.jwt.sign as (p: object) => string)(payload),
     );
     reply.status(201).send(result);

@@ -1,7 +1,9 @@
 import bcrypt from 'bcrypt';
+import { createHmac, randomInt } from 'node:crypto';
 import { ICustomerRepository } from '../../domain/repositories/ICustomerRepository';
 import { IStaffRepository } from '../../domain/repositories/IStaffRepository';
 import { UnauthorizedError, ConflictError, NotFoundError, ValidationError } from '../../shared/errors/AppError';
+import { config } from '../../shared/config';
 
 type Role = 'customer' | 'worker' | 'admin';
 
@@ -33,30 +35,74 @@ const MENUS: Record<Role, Array<{ key: string; label: string; icon: string }>> =
   ],
 };
 
+const CAPTCHA_TTL_MS = 5 * 60 * 1000;
+
+// MVP replay guard — resets on server restart.
+const usedCaptchaIds = new Set<string>();
+
+const hmac = (data: string) =>
+  createHmac('sha256', config.jwtSecret).update(data).digest('base64url');
+
 export class AuthService {
   constructor(
     private customers: ICustomerRepository,
     private staff: IStaffRepository,
   ) {}
 
+  /// Stateless arithmetic captcha: captcha_id = `${exp}.${answerHash}.${sig}`,
+  /// all HMAC-signed with the JWT secret — nothing stored server-side.
+  generateCaptcha() {
+    const a = randomInt(1, 10);
+    const b = randomInt(1, 10);
+    const exp = Date.now() + CAPTCHA_TTL_MS;
+    const answerHash = hmac(`answer:${a + b}`);
+    const sig = hmac(`captcha:${answerHash}:${exp}`);
+    return { captcha_id: `${exp}.${answerHash}.${sig}`, question: `What is ${a} + ${b}?` };
+  }
+
+  private verifyCaptcha(captchaId: string, answer: string): void {
+    const parts = captchaId.split('.');
+    if (parts.length !== 3) throw new ValidationError('Invalid captcha');
+    const [expStr, answerHash, sig] = parts;
+    const exp = Number(expStr);
+    if (!Number.isFinite(exp) || Date.now() > exp) throw new ValidationError('Captcha expired — tap refresh for a new question');
+    if (sig !== hmac(`captcha:${answerHash}:${exp}`)) throw new ValidationError('Invalid captcha');
+    if (usedCaptchaIds.has(captchaId)) throw new ValidationError('Captcha already used — tap refresh for a new question');
+    if (answerHash !== hmac(`answer:${answer.trim()}`)) throw new ValidationError('Incorrect captcha answer');
+    usedCaptchaIds.add(captchaId);
+  }
+
   async register(
-    identifier: string,
-    identifierType: 'email' | 'mobile',
-    password: string,
-    firstName: string,
-    lastName: string,
+    data: {
+      first_name: string;
+      last_name: string;
+      email: string;
+      phone: string;
+      password: string;
+      captcha_id: string;
+      captcha_answer: string;
+    },
     signFn: (payload: object) => string,
   ) {
-    const existing = await this.customers.findByIdentifier(identifier);
-    if (existing) throw new ConflictError('Account already exists');
+    this.verifyCaptcha(data.captcha_id, data.captcha_answer);
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const email = data.email.toLowerCase();
+    const [existingEmail, existingPhone] = await Promise.all([
+      this.customers.findByEmail(email),
+      this.customers.findByPhone(data.phone),
+    ]);
+    if (existingEmail) throw new ConflictError('An account with this email already exists');
+    if (existingPhone) throw new ConflictError('An account with this mobile number already exists');
+
+    const passwordHash = await bcrypt.hash(data.password, 10);
     const customer = await this.customers.create({
-      identifier,
-      identifier_type: identifierType,
+      identifier: email,
+      identifier_type: 'email',
       password_hash: passwordHash,
-      first_name: firstName,
-      last_name: lastName,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      email,
+      phone_number: data.phone,
       preferred_store_id: null,
     });
 

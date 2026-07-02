@@ -15,6 +15,10 @@ export async function authRoutes(app: FastifyInstance) {
   );
   const controller = new AuthController(service);
 
+  app.get('/auth/captcha', {
+    schema: { tags: ['Auth'] },
+  }, controller.getCaptcha);
+
   app.post('/auth/register', {
     schema: { body: toSchema(registerSchema), tags: ['Auth'] },
   }, controller.register);
