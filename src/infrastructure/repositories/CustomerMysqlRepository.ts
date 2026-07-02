@@ -12,6 +12,22 @@ export class CustomerMysqlRepository implements ICustomerRepository {
     return (rows[0] as ICustomer) || null;
   }
 
+  async findByEmail(email: string): Promise<ICustomer | null> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      'SELECT * FROM customers WHERE email = ? AND deleted_at IS NULL',
+      [email]
+    );
+    return (rows[0] as ICustomer) || null;
+  }
+
+  async findByPhone(phone: string): Promise<ICustomer | null> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      'SELECT * FROM customers WHERE phone_number = ? AND deleted_at IS NULL',
+      [phone]
+    );
+    return (rows[0] as ICustomer) || null;
+  }
+
   async findById(id: number): Promise<ICustomer | null> {
     const [rows] = await db.query<RowDataPacket[]>(
       'SELECT * FROM customers WHERE id = ? AND deleted_at IS NULL',
@@ -39,14 +55,14 @@ export class CustomerMysqlRepository implements ICustomerRepository {
 
   async create(data: Omit<ICustomer, 'id' | 'deleted_at' | 'created_at' | 'updated_at'>): Promise<ICustomer> {
     const [result] = await db.query<ResultSetHeader>(
-      'INSERT INTO customers (identifier, identifier_type, password_hash, first_name, last_name, preferred_store_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [data.identifier, data.identifier_type, data.password_hash, data.first_name, data.last_name, data.preferred_store_id ?? null]
+      'INSERT INTO customers (identifier, identifier_type, password_hash, first_name, last_name, preferred_store_id, email, phone_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [data.identifier, data.identifier_type, data.password_hash, data.first_name, data.last_name, data.preferred_store_id ?? null, data.email ?? null, data.phone_number ?? null]
     );
     return (await this.findById(result.insertId))!;
   }
 
   async update(id: number, data: Partial<Omit<ICustomer, 'id' | 'created_at' | 'updated_at'>>): Promise<ICustomer | null> {
-    const ALLOWED_COLUMNS = ['identifier', 'identifier_type', 'password_hash', 'first_name', 'last_name', 'preferred_store_id', 'address', 'phone', 'deleted_at'];
+    const ALLOWED_COLUMNS = ['identifier', 'identifier_type', 'password_hash', 'first_name', 'last_name', 'preferred_store_id', 'address', 'phone', 'deleted_at', 'email', 'phone_number'];
     const entries = Object.entries(data).filter(([k]) => ALLOWED_COLUMNS.includes(k));
     if (entries.length === 0) return this.findById(id);
     const fields = entries.map(([k]) => `${k} = ?`).join(', ');

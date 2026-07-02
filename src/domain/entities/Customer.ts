@@ -5,6 +5,8 @@ export interface ICustomer {
   password_hash: string;
   first_name: string;
   last_name: string;
+  email?: string | null;
+  phone_number?: string | null;
   preferred_store_id: number | null;
   address?: string | null;
   phone?: string | null;
