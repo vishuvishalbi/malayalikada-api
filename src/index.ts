@@ -36,7 +36,11 @@ const app = Fastify({
 
 app.register(swaggerPlugin);
 app.register(cors, { origin: config.corsOrigin });
-app.register(jwt, { secret: config.jwtSecret });
+// 30-day sessions (req F1-8) — every sign (login/register/me/refresh) inherits this.
+app.register(jwt, {
+  secret: config.jwtSecret,
+  sign: { expiresIn: '30d' },
+});
 app.register(rateLimit, { global: false });
 app.register(multipart);
 app.register(staticFiles, {
