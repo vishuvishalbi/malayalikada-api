@@ -15,14 +15,31 @@ export class CartService {
 
     const productIds = cart.items.map(i => i.product_id);
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT p.id, p.name, sp.price_nzd
+      `SELECT p.id, p.name, sp.price_nzd,
+              c.name AS category_name,
+              COALESCE(pi.url, CONCAT('/uploads/', pi.filename)) AS first_image_url
        FROM products p
        JOIN store_pricing sp ON sp.product_id = p.id AND sp.store_id = ?
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN (
+         SELECT pi2.product_id, pi2.url, pi2.filename
+         FROM product_images pi2
+         INNER JOIN (
+           SELECT product_id, MIN(sort_order) AS min_sort
+           FROM product_images
+           GROUP BY product_id
+         ) AS mins ON pi2.product_id = mins.product_id AND pi2.sort_order = mins.min_sort
+       ) AS pi ON p.id = pi.product_id
        WHERE p.id IN (${productIds.map(() => '?').join(',')})`,
       [cart.store_id, ...productIds]
     );
 
-    const priceMap = new Map((rows as any[]).map((r: any) => [r.id, { name: r.name, price: Number(r.price_nzd) }]));
+    const priceMap = new Map((rows as any[]).map((r: any) => [r.id, {
+      name: r.name,
+      price: Number(r.price_nzd),
+      category_name: r.category_name ?? null,
+      first_image_url: r.first_image_url ?? null,
+    }]));
 
     let grandTotal = 0;
     const items = cart.items.map(i => {
@@ -30,7 +47,15 @@ export class CartService {
       const unitPrice = info?.price ?? 0;
       const lineTotal = unitPrice * i.quantity;
       grandTotal += lineTotal;
-      return { productId: i.product_id, name: info?.name ?? '', quantity: i.quantity, unitPrice, lineTotal };
+      return {
+        productId: i.product_id,
+        name: info?.name ?? '',
+        quantity: i.quantity,
+        unitPrice,
+        lineTotal,
+        category_name: info?.category_name ?? null,
+        first_image_url: info?.first_image_url ?? null,
+      };
     });
 
     return { storeId: cart.store_id, items, grandTotal };
