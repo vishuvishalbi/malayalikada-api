@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 const submitSchema = z.object({
   item_name: z.string().min(1).max(200),
+  barcode: z.string().max(50).optional(),
   description: z.string().optional(),
   quantity: z.number().int().positive().default(1),
   store_id: z.number().int().positive().optional(),
@@ -21,6 +22,7 @@ function toUiRequest(r: any) {
   return {
     id: r.id,
     item_name: r.product_name,
+    barcode: r.barcode ?? null,
     description: r.notes ?? null,
     quantity: r.quantity ?? 1,
     status: STATUS_MAP[r.status] ?? r.status,
@@ -34,9 +36,10 @@ export class ItemRequestController {
   submit = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = submitSchema.safeParse(request.body);
     if (!parsed.success) throw new ValidationError('Invalid input', parsed.error.flatten());
-    const { item_name, description, store_id } = parsed.data;
+    const { item_name, barcode, description } = parsed.data;
     const result = await this.service.submit(request.user.sub, {
       product_name: item_name,
+      barcode,
       notes: description,
     });
     reply.status(201).send(toUiRequest(result));
