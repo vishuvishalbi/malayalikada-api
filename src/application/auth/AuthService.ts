@@ -114,8 +114,24 @@ export class AuthService {
     };
   }
 
+  /** Customers registered via the v5 form have identifier=email, so login must
+   *  also match the email/phone_number columns (accepting +64/0 NZ variants). */
+  private async findCustomerForLogin(identifier: string) {
+    const direct = await this.customers.findByIdentifier(identifier);
+    if (direct) return direct;
+    const byEmail = await this.customers.findByEmail(identifier);
+    if (byEmail) return byEmail;
+    const phone = identifier.replace(/[\s-]/g, '');
+    const alt = phone.startsWith('+64')
+      ? `0${phone.slice(3)}`
+      : phone.startsWith('0')
+        ? `+64${phone.slice(1)}`
+        : phone;
+    return (await this.customers.findByPhone(phone)) ?? (await this.customers.findByPhone(alt));
+  }
+
   async login(identifier: string, password: string, signFn: (payload: object) => string) {
-    const customer = await this.customers.findByIdentifier(identifier);
+    const customer = await this.findCustomerForLogin(identifier);
     if (customer) {
       const valid = await bcrypt.compare(password, customer.password_hash);
       if (!valid) throw new UnauthorizedError('Invalid credentials');
