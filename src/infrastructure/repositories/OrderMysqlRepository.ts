@@ -1,9 +1,11 @@
 import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import { db } from '../database/connection';
 import { IOrder, IOrderItem } from '../../domain/entities/Order';
-import { IOrderRepository, OrderListFilters } from '../../domain/repositories/IOrderRepository';
+import { IOrderRepository, OrderListFilters, OrderRow, AdminOrderDetail, ExportRow } from '../../domain/repositories/IOrderRepository';
 import { generateReferenceNumber } from '../../shared/utils';
 import { ValidationError } from '../../shared/errors/AppError';
+
+const CUSTOMER_NAME_EXPR = "CONCAT(c.first_name, ' ', c.last_name)";
 
 export class OrderMysqlRepository implements IOrderRepository {
   async create(
@@ -72,35 +74,111 @@ export class OrderMysqlRepository implements IOrderRepository {
     return { ...(rows[0] as IOrder), orderItems: itemRows as (IOrderItem & { name: string })[] };
   }
 
-  async findWorkerQueue(storeIds: number[]): Promise<IOrder[]> {
+  async findAdminDetail(id: number): Promise<AdminOrderDetail | null> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT o.*,
+              ${CUSTOMER_NAME_EXPR} AS customer_name,
+              c.identifier AS customer_identifier,
+              s.name AS store_name
+       FROM orders o
+       JOIN customers c ON c.id = o.customer_id
+       JOIN stores s ON s.id = o.store_id
+       WHERE o.id = ?`,
+      [id]
+    );
+    if (!rows[0]) return null;
+    const [itemRows] = await db.query<RowDataPacket[]>(
+      `SELECT oi.*, p.name FROM order_items oi
+       LEFT JOIN products p ON p.id = oi.product_id
+       WHERE oi.order_id = ?`,
+      [id]
+    );
+    const row = rows[0] as any;
+    return {
+      ...row,
+      items: itemRows as (IOrderItem & { name: string })[],
+    } as AdminOrderDetail;
+  }
+
+  async findWorkerQueue(storeIds: number[]): Promise<OrderRow[]> {
     if (storeIds.length === 0) return [];
     const placeholders = storeIds.map(() => '?').join(',');
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT * FROM orders WHERE store_id IN (${placeholders}) AND status = 'pending_approval' ORDER BY created_at ASC`,
+      `SELECT o.*,
+              ${CUSTOMER_NAME_EXPR} AS customer_name,
+              s.name AS store_name
+       FROM orders o
+       JOIN customers c ON c.id = o.customer_id
+       JOIN stores s ON s.id = o.store_id
+       WHERE o.store_id IN (${placeholders}) AND o.status = 'pending_approval'
+       ORDER BY o.created_at ASC`,
       storeIds
     );
-    return rows as IOrder[];
+    return rows as OrderRow[];
   }
 
-  async findAllAdmin(filters: OrderListFilters): Promise<{ orders: IOrder[]; total: number }> {
+  async findWorkerCompleted(storeIds: number[], page: number, limit: number): Promise<{ orders: OrderRow[]; total: number }> {
+    const offset = (page - 1) * limit;
+    let whereClause: string;
+    let params: unknown[];
+
+    if (storeIds.length === 0) {
+      // admin: all stores
+      whereClause = "WHERE o.status IN ('approved', 'rejected')";
+      params = [];
+    } else {
+      const placeholders = storeIds.map(() => '?').join(',');
+      whereClause = `WHERE o.store_id IN (${placeholders}) AND o.status IN ('approved', 'rejected')`;
+      params = storeIds;
+    }
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT o.*,
+              ${CUSTOMER_NAME_EXPR} AS customer_name,
+              s.name AS store_name
+       FROM orders o
+       JOIN customers c ON c.id = o.customer_id
+       JOIN stores s ON s.id = o.store_id
+       ${whereClause}
+       ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+    const [countRows] = await db.query<RowDataPacket[]>(
+      `SELECT COUNT(*) as total FROM orders o ${whereClause}`,
+      params
+    );
+    return { orders: rows as OrderRow[], total: (countRows[0] as any).total };
+  }
+
+  async findAllAdmin(filters: OrderListFilters): Promise<{ orders: OrderRow[]; total: number }> {
     const conditions: string[] = [];
     const params: unknown[] = [];
 
-    if (filters.storeId) { conditions.push('store_id = ?'); params.push(filters.storeId); }
-    if (filters.status) { conditions.push('status = ?'); params.push(filters.status); }
-    if (filters.from) { conditions.push('created_at >= ?'); params.push(filters.from); }
-    if (filters.to) { conditions.push('created_at <= ?'); params.push(filters.to + ' 23:59:59'); }
+    if (filters.storeId) { conditions.push('o.store_id = ?'); params.push(filters.storeId); }
+    if (filters.status) { conditions.push('o.status = ?'); params.push(filters.status); }
+    if (filters.from) { conditions.push('o.created_at >= ?'); params.push(filters.from); }
+    if (filters.to) { conditions.push('o.created_at <= ?'); params.push(filters.to + ' 23:59:59'); }
+    if (filters.search) { conditions.push('o.reference_no LIKE ?'); params.push(`%${filters.search}%`); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT o.*,
+              ${CUSTOMER_NAME_EXPR} AS customer_name,
+              s.name AS store_name
+       FROM orders o
+       JOIN customers c ON c.id = o.customer_id
+       JOIN stores s ON s.id = o.store_id
+       ${where} ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
       [...params, filters.limit, (filters.page - 1) * filters.limit]
     );
     const [countRows] = await db.query<RowDataPacket[]>(
-      `SELECT COUNT(*) as total FROM orders ${where}`,
+      `SELECT COUNT(*) as total FROM orders o
+       JOIN customers c ON c.id = o.customer_id
+       JOIN stores s ON s.id = o.store_id
+       ${where}`,
       params
     );
-    return { orders: rows as IOrder[], total: (countRows[0] as any).total };
+    return { orders: rows as OrderRow[], total: (countRows[0] as any).total };
   }
 
   async updateStatus(id: number, status: IOrder['status'], actionedBy: number, rejectionReason?: string): Promise<void> {
@@ -157,17 +235,29 @@ export class OrderMysqlRepository implements IOrderRepository {
     }
   }
 
-  async getExportRows(storeId?: number, from?: string, to?: string): Promise<IOrder[]> {
+  async getExportRows(storeId?: number, from?: string, to?: string): Promise<ExportRow[]> {
     const conditions: string[] = [];
     const params: unknown[] = [];
-    if (storeId) { conditions.push('store_id = ?'); params.push(storeId); }
-    if (from) { conditions.push('created_at >= ?'); params.push(from); }
-    if (to) { conditions.push('created_at <= ?'); params.push(to + ' 23:59:59'); }
+    if (storeId) { conditions.push('o.store_id = ?'); params.push(storeId); }
+    if (from) { conditions.push('o.created_at >= ?'); params.push(from); }
+    if (to) { conditions.push('o.created_at <= ?'); params.push(to + ' 23:59:59'); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT * FROM orders ${where} ORDER BY created_at DESC`,
+      `SELECT o.reference_no, o.created_at,
+              ${CUSTOMER_NAME_EXPR} AS customer_name,
+              c.identifier AS customer_identifier,
+              s.name AS store_name,
+              o.status, o.payment_status, o.total_nzd,
+              COUNT(oi.id) AS item_count
+       FROM orders o
+       JOIN customers c ON c.id = o.customer_id
+       JOIN stores s ON s.id = o.store_id
+       LEFT JOIN order_items oi ON oi.order_id = o.id
+       ${where}
+       GROUP BY o.id, o.reference_no, o.created_at, c.first_name, c.last_name, c.identifier, s.name, o.status, o.payment_status, o.total_nzd
+       ORDER BY o.created_at DESC`,
       params
     );
-    return rows as IOrder[];
+    return rows as ExportRow[];
   }
 }

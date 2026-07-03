@@ -13,10 +13,14 @@ export async function orderRoutes(app: FastifyInstance) {
   );
   const ctrl = new OrderController(service);
 
-  // Static paths first (before /:id)
+  // Static paths first (before /:id param routes)
   app.get('/orders/worker/queue', { preHandler: [authenticate, requireRole('worker', 'admin')] }, ctrl.workerQueue);
+  app.get('/orders/worker/completed', { preHandler: [authenticate, requireRole('worker', 'admin')] }, ctrl.workerCompleted);
+
+  // Admin list + export must come before /orders/admin/:id
   app.get('/orders/admin', { preHandler: [authenticate, requireRole('admin')] }, ctrl.adminList);
   app.get('/orders/admin/export', { preHandler: [authenticate, requireRole('admin')] }, ctrl.adminExportCsv);
+  app.get('/orders/admin/:id', { preHandler: [authenticate, requireRole('worker', 'admin')] }, ctrl.adminDetail);
 
   // Customer routes
   app.post('/orders', { preHandler: [authenticate, requireRole('customer')] }, ctrl.submit);

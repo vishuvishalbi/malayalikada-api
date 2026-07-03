@@ -20,9 +20,10 @@ export class StaffMysqlRepository implements IStaffRepository {
     return (rows[0] as IStaffUser) || null;
   }
 
-  async findAll(): Promise<IStaffUser[]> {
+  async findAll(includeInactive = false): Promise<IStaffUser[]> {
+    const where = includeInactive ? '' : 'WHERE is_active = 1';
     const [rows] = await db.query<RowDataPacket[]>(
-      'SELECT * FROM staff_users WHERE is_active = 1 ORDER BY name'
+      `SELECT * FROM staff_users ${where} ORDER BY name`
     );
     return rows as IStaffUser[];
   }

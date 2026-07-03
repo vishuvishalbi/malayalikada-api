@@ -16,6 +16,10 @@ export const updateStaffSchema = z.object({
   store_ids: z.array(z.number().int().positive()).optional(),
 });
 
+export const staffListQuerySchema = z.object({
+  include_inactive: z.enum(['true', 'false']).optional().transform(v => v === 'true'),
+});
+
 export const customerListQuerySchema = z.object({
   search: z.string().optional(),
   page: z.coerce.number().int().positive().default(1),

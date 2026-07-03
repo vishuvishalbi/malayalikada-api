@@ -42,8 +42,8 @@ export class AdminService {
     };
   }
 
-  listStaff() {
-    return this.staff.findAll();
+  listStaff(includeInactive = false) {
+    return this.staff.findAll(includeInactive);
   }
 
   async createStaff(data: { identifier: string; identifier_type: 'email' | 'mobile'; password: string; name: string; role: 'worker' | 'admin'; store_ids?: number[] }) {

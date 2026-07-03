@@ -68,30 +68,51 @@ export class OrderService {
     return this.orders.findWorkerQueue(storeIds);
   }
 
-  async approve(orderId: number, staffId: number) {
+  async workerCompleted(storeIds: number[] | null, page = 1, limit = 20) {
+    // null = admin (all stores), pass empty array to signal "all stores"
+    return this.orders.findWorkerCompleted(storeIds ?? [], page, limit);
+  }
+
+  async adminDetail(orderId: number, callerRole: string, callerStoreIds: number[]) {
+    const detail = await this.orders.findAdminDetail(orderId);
+    if (!detail) throw new NotFoundError('Order not found');
+    if (callerRole === 'worker' && !callerStoreIds.includes(detail.store_id)) {
+      throw new ForbiddenError();
+    }
+    return detail;
+  }
+
+  async approve(orderId: number, staffId: number, callerRole: string, callerStoreIds: number[]) {
     const order = await this.orders.findById(orderId);
     if (!order) throw new NotFoundError('Order not found');
+    if (callerRole === 'worker' && !callerStoreIds.includes(order.store_id)) {
+      throw new ForbiddenError();
+    }
     if (order.status !== 'pending_approval') throw new ValidationError('Order is not pending approval');
     await this.orders.deductStock(orderId);
     await this.orders.updateStatus(orderId, 'approved', staffId);
     return this.orders.findById(orderId);
   }
 
-  async reject(orderId: number, staffId: number, reason: string) {
+  async reject(orderId: number, staffId: number, reason: string, callerRole: string, callerStoreIds: number[]) {
     const order = await this.orders.findById(orderId);
     if (!order) throw new NotFoundError('Order not found');
+    if (callerRole === 'worker' && !callerStoreIds.includes(order.store_id)) {
+      throw new ForbiddenError();
+    }
     if (order.status !== 'pending_approval') throw new ValidationError('Order is not pending approval');
     await this.orders.updateStatus(orderId, 'rejected', staffId, reason);
     return this.orders.findById(orderId);
   }
 
-  async adminList(filters: { store_id?: number; status?: string; from?: string; to?: string; page?: number; limit?: number }) {
+  async adminList(filters: { store_id?: number; status?: string; from?: string; to?: string; search?: string; page?: number; limit?: number }) {
     const { limit } = paginate(filters.page ?? 1, filters.limit ?? 20);
     return this.orders.findAllAdmin({
       storeId: filters.store_id,
       status: filters.status as any,
       from: filters.from,
       to: filters.to,
+      search: filters.search,
       page: filters.page ?? 1,
       limit,
     });
@@ -99,9 +120,19 @@ export class OrderService {
 
   async adminExportCsv(filters: { store_id?: number; from?: string; to?: string }): Promise<string> {
     const rows = await this.orders.getExportRows(filters.store_id, filters.from, filters.to);
-    const header = 'id,reference_no,customer_id,store_id,status,total_nzd,payment_status,created_at\n';
+    const header = 'reference_no,created_at,customer_name,customer_identifier,store_name,status,payment_status,item_count,total_nzd\n';
     const lines = rows.map(o =>
-      `${o.id},${o.reference_no},${o.customer_id},${o.store_id},${o.status},${o.total_nzd},${o.payment_status},${o.created_at}`
+      [
+        o.reference_no,
+        o.created_at instanceof Date ? o.created_at.toISOString() : o.created_at,
+        `"${String(o.customer_name).replace(/"/g, '""')}"`,
+        o.customer_identifier,
+        `"${String(o.store_name).replace(/"/g, '""')}"`,
+        o.status,
+        o.payment_status,
+        o.item_count,
+        o.total_nzd,
+      ].join(',')
     ).join('\n');
     return header + lines;
   }
