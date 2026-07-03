@@ -5,6 +5,8 @@ export interface IOrder {
   store_id: number;
   status: 'pending_approval' | 'approved' | 'rejected';
   total_nzd: number;
+  delivery_fee_nzd: number;
+  total_weight_kg: number;
   stripe_payment_intent_id: string | null;
   payment_status: 'unpaid' | 'paid' | 'refunded';
   rejection_reason: string | null;

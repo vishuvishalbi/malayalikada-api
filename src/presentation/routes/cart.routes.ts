@@ -2,11 +2,14 @@ import { FastifyInstance } from 'fastify';
 import { CartController } from '../controllers/cart.controller';
 import { CartService } from '../../application/cart/CartService';
 import { CartMysqlRepository } from '../../infrastructure/repositories/CartMysqlRepository';
+import { DeliveryService } from '../../application/delivery/DeliveryService';
+import { DeliverySlabMysqlRepository } from '../../infrastructure/repositories/DeliverySlabMysqlRepository';
 import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
 
 export async function cartRoutes(app: FastifyInstance) {
-  const service = new CartService(new CartMysqlRepository());
+  const deliveryService = new DeliveryService(new DeliverySlabMysqlRepository());
+  const service = new CartService(new CartMysqlRepository(), deliveryService);
   const ctrl = new CartController(service);
 
   const preHandler = [authenticate, requireRole('customer')];

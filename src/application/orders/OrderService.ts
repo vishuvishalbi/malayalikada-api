@@ -4,11 +4,13 @@ import { ICartRepository } from '../../domain/repositories/ICartRepository';
 import { NotFoundError, ValidationError, ForbiddenError } from '../../shared/errors/AppError';
 import { paginate } from '../../shared/utils';
 import { db } from '../../infrastructure/database/connection';
+import { DeliveryService } from '../delivery/DeliveryService';
 
 export class OrderService {
   constructor(
     private orders: IOrderRepository,
     private carts: ICartRepository,
+    private delivery: DeliveryService,
   ) {}
 
   async submit(customerId: number) {
@@ -17,18 +19,32 @@ export class OrderService {
 
     const productIds = cart.items.map(i => i.product_id);
     const [priceRows] = await db.query<RowDataPacket[]>(
-      `SELECT product_id, price_nzd FROM store_pricing WHERE store_id = ? AND product_id IN (${productIds.map(() => '?').join(',')})`,
+      `SELECT sp.product_id, sp.price_nzd, p.weight
+       FROM store_pricing sp
+       JOIN products p ON p.id = sp.product_id
+       WHERE sp.store_id = ? AND sp.product_id IN (${productIds.map(() => '?').join(',')})`,
       [cart.store_id, ...productIds]
     );
-    const priceMap = new Map((priceRows as any[]).map((r: any) => [r.product_id, Number(r.price_nzd)]));
+    const priceMap = new Map((priceRows as any[]).map((r: any) => [
+      r.product_id,
+      { price: Number(r.price_nzd), weight_kg: r.weight !== null ? Number(r.weight) : 0 },
+    ]));
 
-    let total = 0;
+    let subtotal = 0;
+    // product.weight is in kilograms per unit; item weight = product.weight * quantity;
+    // products with null weight contribute 0 kg
+    let total_weight_kg = 0;
     const orderItems = cart.items.map(i => {
-      const price = priceMap.get(i.product_id);
-      if (price === undefined) throw new ValidationError(`Product ${i.product_id} not available at selected store`);
-      total += price * i.quantity;
-      return { order_id: 0, product_id: i.product_id, quantity: i.quantity, unit_price_nzd: price };
+      const info = priceMap.get(i.product_id);
+      if (info === undefined) throw new ValidationError(`Product ${i.product_id} not available at selected store`);
+      subtotal += info.price * i.quantity;
+      total_weight_kg += info.weight_kg * i.quantity;
+      return { order_id: 0, product_id: i.product_id, quantity: i.quantity, unit_price_nzd: info.price };
     });
+
+    total_weight_kg = Math.round(total_weight_kg * 1000) / 1000;
+    const delivery_fee_nzd = await this.delivery.feeForWeight(total_weight_kg);
+    const total_nzd = Math.round((subtotal + delivery_fee_nzd) * 100) / 100;
 
     const paymentIntentId = `pi_stub_${customerId}_${Date.now()}`;
 
@@ -38,7 +54,9 @@ export class OrderService {
         customer_id: customerId,
         store_id: cart.store_id,
         status: 'pending_approval',
-        total_nzd: Math.round(total * 100) / 100,
+        total_nzd,
+        delivery_fee_nzd,
+        total_weight_kg,
         stripe_payment_intent_id: paymentIntentId,
         payment_status: 'unpaid',
         rejection_reason: null,
@@ -120,7 +138,7 @@ export class OrderService {
 
   async adminExportCsv(filters: { store_id?: number; from?: string; to?: string }): Promise<string> {
     const rows = await this.orders.getExportRows(filters.store_id, filters.from, filters.to);
-    const header = 'reference_no,created_at,customer_name,customer_identifier,store_name,status,payment_status,item_count,total_nzd\n';
+    const header = 'reference_no,created_at,customer_name,customer_identifier,store_name,status,payment_status,item_count,total_nzd,delivery_fee_nzd\n';
     const lines = rows.map(o =>
       [
         o.reference_no,
@@ -132,6 +150,7 @@ export class OrderService {
         o.payment_status,
         o.item_count,
         o.total_nzd,
+        o.delivery_fee_nzd,
       ].join(',')
     ).join('\n');
     return header + lines;

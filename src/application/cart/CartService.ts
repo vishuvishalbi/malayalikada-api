@@ -3,19 +3,23 @@ import { ICartRepository } from '../../domain/repositories/ICartRepository';
 import { ICartItem } from '../../domain/entities/Cart';
 import { ValidationError, NotFoundError } from '../../shared/errors/AppError';
 import { db } from '../../infrastructure/database/connection';
+import { DeliveryService } from '../delivery/DeliveryService';
 
 export class CartService {
-  constructor(private repo: ICartRepository) {}
+  constructor(
+    private repo: ICartRepository,
+    private delivery: DeliveryService,
+  ) {}
 
   async get(customerId: number) {
     const cart = await this.repo.findByCustomer(customerId);
     if (!cart || cart.items.length === 0) {
-      return { storeId: cart?.store_id ?? null, items: [], grandTotal: 0 };
+      return { storeId: cart?.store_id ?? null, items: [], grandTotal: 0, total_weight_kg: 0, delivery_fee_nzd: 0 };
     }
 
     const productIds = cart.items.map(i => i.product_id);
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT p.id, p.name, sp.price_nzd,
+      `SELECT p.id, p.name, p.weight, sp.price_nzd,
               c.name AS category_name,
               COALESCE(pi.url, CONCAT('/uploads/', pi.filename)) AS first_image_url
        FROM products p
@@ -37,16 +41,21 @@ export class CartService {
     const priceMap = new Map((rows as any[]).map((r: any) => [r.id, {
       name: r.name,
       price: Number(r.price_nzd),
+      // product.weight is in kilograms per unit; null weight contributes 0 kg
+      weight_kg: r.weight !== null && r.weight !== undefined ? Number(r.weight) : 0,
       category_name: r.category_name ?? null,
       first_image_url: r.first_image_url ?? null,
     }]));
 
     let grandTotal = 0;
+    let total_weight_kg = 0;
     const items = cart.items.map(i => {
       const info = priceMap.get(i.product_id);
       const unitPrice = info?.price ?? 0;
       const lineTotal = unitPrice * i.quantity;
       grandTotal += lineTotal;
+      // item weight contribution = product.weight_kg * quantity
+      total_weight_kg += (info?.weight_kg ?? 0) * i.quantity;
       return {
         productId: i.product_id,
         name: info?.name ?? '',
@@ -58,7 +67,10 @@ export class CartService {
       };
     });
 
-    return { storeId: cart.store_id, items, grandTotal };
+    total_weight_kg = Math.round(total_weight_kg * 1000) / 1000;
+    const delivery_fee_nzd = await this.delivery.feeForWeight(total_weight_kg);
+
+    return { storeId: cart.store_id, items, grandTotal, total_weight_kg, delivery_fee_nzd };
   }
 
   async addItem(customerId: number, productId: number, quantity: number) {

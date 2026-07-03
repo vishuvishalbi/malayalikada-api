@@ -23,6 +23,7 @@ import { adminRoutes } from './presentation/routes/admin.routes';
 import { bannerRoutes } from './presentation/routes/banner.routes';
 import { notifyRequestRoutes } from './presentation/routes/notifyRequest.routes';
 import { favoriteRoutes } from './presentation/routes/favorite.routes';
+import { deliverySlabRoutes } from './presentation/routes/deliverySlab.routes';
 
 const app = Fastify({
   logger: {
@@ -73,6 +74,7 @@ app.register(adminRoutes, { prefix: '/api/v1' });
 app.register(bannerRoutes, { prefix: '/api/v1' });
 app.register(notifyRequestRoutes, { prefix: '/api/v1' });
 app.register(favoriteRoutes, { prefix: '/api/v1' });
+app.register(deliverySlabRoutes, { prefix: '/api/v1' });
 
 app.get('/health', async () => ({ status: 'ok' }));
 

@@ -32,6 +32,7 @@ export interface ExportRow {
   payment_status: string;
   item_count: number;
   total_nzd: number;
+  delivery_fee_nzd: number;
 }
 
 export interface IOrderRepository {

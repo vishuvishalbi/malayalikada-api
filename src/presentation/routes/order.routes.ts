@@ -3,6 +3,8 @@ import { OrderController } from '../controllers/order.controller';
 import { OrderService } from '../../application/orders/OrderService';
 import { OrderMysqlRepository } from '../../infrastructure/repositories/OrderMysqlRepository';
 import { CartMysqlRepository } from '../../infrastructure/repositories/CartMysqlRepository';
+import { DeliveryService } from '../../application/delivery/DeliveryService';
+import { DeliverySlabMysqlRepository } from '../../infrastructure/repositories/DeliverySlabMysqlRepository';
 import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
 
@@ -10,6 +12,7 @@ export async function orderRoutes(app: FastifyInstance) {
   const service = new OrderService(
     new OrderMysqlRepository(),
     new CartMysqlRepository(),
+    new DeliveryService(new DeliverySlabMysqlRepository()),
   );
   const ctrl = new OrderController(service);
 

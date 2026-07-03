@@ -24,9 +24,10 @@ export class OrderMysqlRepository implements IOrderRepository {
       const referenceNo = generateReferenceNumber(today, seq);
 
       const [result] = await conn.query<ResultSetHeader>(
-        `INSERT INTO orders (reference_no, customer_id, store_id, status, total_nzd, stripe_payment_intent_id, payment_status, rejection_reason, actioned_by, actioned_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO orders (reference_no, customer_id, store_id, status, total_nzd, delivery_fee_nzd, total_weight_kg, stripe_payment_intent_id, payment_status, rejection_reason, actioned_by, actioned_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [referenceNo, order.customer_id, order.store_id, order.status, order.total_nzd,
+         order.delivery_fee_nzd ?? 0, order.total_weight_kg ?? 0,
          order.stripe_payment_intent_id ?? null, order.payment_status,
          order.rejection_reason ?? null, order.actioned_by ?? null, order.actioned_at ?? null]
       );
@@ -247,14 +248,14 @@ export class OrderMysqlRepository implements IOrderRepository {
               ${CUSTOMER_NAME_EXPR} AS customer_name,
               c.identifier AS customer_identifier,
               s.name AS store_name,
-              o.status, o.payment_status, o.total_nzd,
+              o.status, o.payment_status, o.total_nzd, o.delivery_fee_nzd,
               COUNT(oi.id) AS item_count
        FROM orders o
        JOIN customers c ON c.id = o.customer_id
        JOIN stores s ON s.id = o.store_id
        LEFT JOIN order_items oi ON oi.order_id = o.id
        ${where}
-       GROUP BY o.id, o.reference_no, o.created_at, c.first_name, c.last_name, c.identifier, s.name, o.status, o.payment_status, o.total_nzd
+       GROUP BY o.id, o.reference_no, o.created_at, c.first_name, c.last_name, c.identifier, s.name, o.status, o.payment_status, o.total_nzd, o.delivery_fee_nzd
        ORDER BY o.created_at DESC`,
       params
     );
