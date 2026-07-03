@@ -59,16 +59,16 @@ export class AdminService {
     if (data.store_ids && data.store_ids.length > 0) {
       await this.staff.setStoreIds(staffUser.id, data.store_ids);
     }
-    return staffUser;
+    return this.staff.findById(staffUser.id)!;
   }
 
   async updateStaff(id: number, data: { name?: string; role?: 'worker' | 'admin'; is_active?: boolean; store_ids?: number[] }) {
     const { store_ids, ...staffData } = data;
-    const updated = await this.staff.update(id, staffData as any);
+    await this.staff.update(id, staffData as any);
     if (store_ids !== undefined) {
       await this.staff.setStoreIds(id, store_ids);
     }
-    return updated;
+    return this.staff.findById(id);
   }
 
   listCustomers(search?: string, page = 1, limit = 20) {

@@ -8,11 +8,12 @@ export class ProductService {
 
   constructor(private repo: IProductRepository) {}
 
-  async list(filters: { category_id?: number; search?: string; store_id?: number; page?: number; limit?: number }) {
+  async list(filters: { category_id?: number; search?: string; store_id?: number; include_inactive?: boolean; page?: number; limit?: number }) {
     return this.repo.findAll({
       category_id: filters.category_id,
       search: filters.search,
       store_id: filters.store_id,
+      include_inactive: filters.include_inactive,
       page: filters.page ?? 1,
       limit: filters.limit ?? 20,
     });

@@ -59,6 +59,7 @@ export class ProductController {
 
   trending = async (request: FastifyRequest, reply: FastifyReply) => {
     const { store_id } = request.query as { store_id?: string };
-    reply.send(await this.service.trending(store_id ? Number(store_id) : undefined));
+    const items = await this.service.trending(store_id ? Number(store_id) : undefined);
+    reply.send({ items });
   };
 }

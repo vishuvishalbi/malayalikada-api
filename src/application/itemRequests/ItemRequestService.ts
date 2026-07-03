@@ -7,7 +7,7 @@ import { ValidationError } from '../../shared/errors/AppError';
 export class ItemRequestService {
   constructor(private repo: IItemRequestRepository) {}
 
-  async submit(customerId: number, data: { product_name: string; barcode?: string; notes?: string }) {
+  async submit(customerId: number, data: { product_name: string; barcode?: string; notes?: string; quantity?: number }) {
     const [custRows] = await db.query<RowDataPacket[]>(
       'SELECT preferred_store_id FROM customers WHERE id = ?', [customerId]
     );
@@ -20,6 +20,7 @@ export class ItemRequestService {
       product_name: data.product_name,
       barcode: data.barcode ?? null,
       notes: data.notes ?? null,
+      quantity: data.quantity ?? 1,
       status: 'new',
       admin_notes: null,
     });

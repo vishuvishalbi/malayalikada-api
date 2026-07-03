@@ -18,8 +18,8 @@ const STATUS_MAP: Record<string, 'pending' | 'approved' | 'rejected'> = {
   declined: 'rejected',
 };
 
-function toUiRequest(r: any) {
-  return {
+function toUiRequest(r: any, includeAdmin = false) {
+  const base = {
     id: r.id,
     item_name: r.product_name,
     barcode: r.barcode ?? null,
@@ -27,6 +27,14 @@ function toUiRequest(r: any) {
     quantity: r.quantity ?? 1,
     status: STATUS_MAP[r.status] ?? r.status,
     created_at: r.created_at,
+  };
+  if (!includeAdmin) return base;
+  return {
+    ...base,
+    store_id: r.store_id ?? null,
+    customer_id: r.customer_id ?? null,
+    customer_name: r.customer_name ?? null,
+    admin_notes: r.admin_notes ?? null,
   };
 }
 
@@ -36,32 +44,33 @@ export class ItemRequestController {
   submit = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = submitSchema.safeParse(request.body);
     if (!parsed.success) throw new ValidationError('Invalid input', parsed.error.flatten());
-    const { item_name, barcode, description } = parsed.data;
+    const { item_name, barcode, description, quantity } = parsed.data;
     const result = await this.service.submit(request.user.sub, {
       product_name: item_name,
       barcode,
       notes: description,
+      quantity,
     });
     reply.status(201).send(toUiRequest(result));
   };
 
   customerList = async (request: FastifyRequest, reply: FastifyReply) => {
     const rows = await this.service.customerList(request.user.sub);
-    reply.send({ requests: rows.map(toUiRequest) });
+    reply.send({ requests: rows.map((r) => toUiRequest(r)) });
   };
 
   adminList = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = adminListQuerySchema.safeParse(request.query);
     if (!parsed.success) throw new ValidationError('Invalid query', parsed.error.flatten());
     const rows = await this.service.adminList(parsed.data.store_id, parsed.data.status);
-    reply.send({ requests: rows.map(toUiRequest) });
+    reply.send({ requests: rows.map((r) => toUiRequest(r, true)) });
   };
 
   updateStatus = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };
     const parsed = adminUpdateSchema.safeParse(request.body);
     if (!parsed.success) throw new ValidationError('Invalid input', parsed.error.flatten());
-    await this.service.updateStatus(Number(id), parsed.data.status, parsed.data.admin_notes);
-    reply.send({ message: 'Status updated' });
+    const updated = await this.service.updateStatus(Number(id), parsed.data.status, parsed.data.admin_notes);
+    reply.send(toUiRequest(updated, true));
   };
 }

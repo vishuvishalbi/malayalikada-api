@@ -6,6 +6,7 @@ export interface IStaffUser {
   name: string;
   role: 'worker' | 'admin';
   is_active: boolean;
+  store_ids?: number[];
   created_at: Date;
   updated_at: Date;
 }

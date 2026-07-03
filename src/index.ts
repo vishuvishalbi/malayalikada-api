@@ -43,7 +43,7 @@ app.register(jwt, {
   sign: { expiresIn: '30d' },
 });
 app.register(rateLimit, { global: false });
-app.register(multipart);
+app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 app.register(staticFiles, {
   root: path.resolve(process.cwd(), 'uploads'),
   prefix: '/uploads/',

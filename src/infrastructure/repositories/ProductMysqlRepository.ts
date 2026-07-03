@@ -5,7 +5,8 @@ import { IProductRepository, IProductStoreData, ProductListFilters } from '../..
 
 export class ProductMysqlRepository implements IProductRepository {
   async findAll(filters: ProductListFilters): Promise<{ products: IProduct[]; total: number }> {
-    const conditions: string[] = ['p.is_active = 1', 'p.deleted_at IS NULL'];
+    const conditions: string[] = ['p.deleted_at IS NULL'];
+    if (!filters.include_inactive) conditions.push('p.is_active = 1');
     const params: unknown[] = [];
 
     if (filters.category_id) {

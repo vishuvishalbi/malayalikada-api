@@ -5,6 +5,7 @@ export interface IItemRequest {
   product_name: string;
   barcode: string | null;
   notes: string | null;
+  quantity: number;
   status: 'new' | 'sourced' | 'declined';
   admin_notes: string | null;
   created_at: Date;

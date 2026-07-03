@@ -17,7 +17,10 @@ export const updateStaffSchema = z.object({
 });
 
 export const staffListQuerySchema = z.object({
-  include_inactive: z.enum(['true', 'false']).optional().transform(v => v === 'true'),
+  include_inactive: z.preprocess(
+    v => (v === '1' ? 'true' : v === '0' ? 'false' : v),
+    z.enum(['true', 'false']).optional().transform(v => v === 'true'),
+  ),
 });
 
 export const customerListQuerySchema = z.object({

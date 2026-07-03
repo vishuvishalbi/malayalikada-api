@@ -23,6 +23,7 @@ export const productQuerySchema = z.object({
   store_id: z.coerce.number().int().positive().optional(),
   featured: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
   sort: z.enum(['newest']).optional(),
+  include_inactive: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });

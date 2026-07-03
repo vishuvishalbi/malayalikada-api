@@ -89,7 +89,7 @@ export class OrderMysqlRepository implements IOrderRepository {
     );
     if (!rows[0]) return null;
     const [itemRows] = await db.query<RowDataPacket[]>(
-      `SELECT oi.*, p.name FROM order_items oi
+      `SELECT oi.*, p.name AS product_name FROM order_items oi
        LEFT JOIN products p ON p.id = oi.product_id
        WHERE oi.order_id = ?`,
       [id]

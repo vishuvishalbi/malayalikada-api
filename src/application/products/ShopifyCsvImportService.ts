@@ -35,15 +35,20 @@ export class ShopifyCsvImportService {
           ? row.categoryPath.split('>').pop()!.trim() || 'Uncategorized'
           : 'Uncategorized';
 
-        await db.query(
-          'INSERT IGNORE INTO categories (name, is_active) VALUES (?, 1)',
-          [shortName],
-        );
         const [catRows] = await db.query<RowDataPacket[]>(
-          'SELECT id FROM categories WHERE name = ? LIMIT 1',
+          'SELECT id FROM categories WHERE name = ? AND deleted_at IS NULL LIMIT 1',
           [shortName],
         );
-        const categoryId = (catRows[0] as RowDataPacket).id as number;
+        let categoryId: number;
+        if (catRows.length > 0) {
+          categoryId = (catRows[0] as RowDataPacket).id as number;
+        } else {
+          const [catResult] = await db.query<ResultSetHeader>(
+            'INSERT INTO categories (name) VALUES (?)',
+            [shortName],
+          );
+          categoryId = catResult.insertId;
+        }
 
         // 2. Upsert product by barcode
         const isActive = row.status === 'active' ? 1 : 0;
@@ -72,10 +77,10 @@ export class ShopifyCsvImportService {
 
         // 3. Upsert store_pricing
         await db.query(
-          `INSERT INTO store_pricing (product_id, store_id, price_nzd, effective_date)
-           VALUES (?, ?, ?, CURDATE())
-           ON DUPLICATE KEY UPDATE price_nzd = VALUES(price_nzd), effective_date = VALUES(effective_date)`,
-          [productId, storeId, row.price],
+          `INSERT INTO store_pricing (product_id, store_id, price_nzd, cost_nzd, effective_date)
+           VALUES (?, ?, ?, ?, CURDATE())
+           ON DUPLICATE KEY UPDATE price_nzd = VALUES(price_nzd), cost_nzd = VALUES(cost_nzd), effective_date = VALUES(effective_date)`,
+          [productId, storeId, row.price, row.costPerItem ?? null],
         );
 
         // 4. Upsert image by (product_id, url) — skip if already exists
@@ -93,16 +98,14 @@ export class ShopifyCsvImportService {
           }
         }
 
-        // 5. Upsert stock if inventory map provided
-        if (inventoryMap) {
-          const qty = inventoryMap.get(row.barcode) ?? 0;
-          await db.query(
-            `INSERT INTO product_stock (product_id, store_id, quantity)
-             VALUES (?, ?, ?)
-             ON DUPLICATE KEY UPDATE quantity = VALUES(quantity)`,
-            [productId, storeId, qty],
-          );
-        }
+        // 5. Upsert stock: inventory file wins, else the products CSV's own qty
+        const qty = inventoryMap?.get(row.sku) ?? inventoryMap?.get(row.barcode) ?? row.inventoryQty;
+        await db.query(
+          `INSERT INTO product_stock (product_id, store_id, quantity)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE quantity = VALUES(quantity)`,
+          [productId, storeId, qty],
+        );
 
         rowsOk++;
       } catch (e: any) {

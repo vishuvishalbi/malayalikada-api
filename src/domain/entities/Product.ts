@@ -33,6 +33,7 @@ export interface IProductStock {
   store_id: number;
   quantity: number;
   low_stock_threshold: number;
+  product_name?: string;
 }
 
 export interface IStorePricing {
@@ -40,4 +41,5 @@ export interface IStorePricing {
   store_id: number;
   price_nzd: number;
   effective_date: string;
+  product_name?: string;
 }

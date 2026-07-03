@@ -20,7 +20,7 @@ export class OrderController {
     const parsed = customerOrderQuerySchema.safeParse(request.query);
     if (!parsed.success) throw new ValidationError('Invalid query', parsed.error.flatten());
     const { orders, total } = await this.service.customerHistory(request.user.sub, parsed.data.page, parsed.data.limit);
-    reply.send({ orders, total });
+    reply.send({ items: orders, total });
   };
 
   customerDetail = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -41,7 +41,7 @@ export class OrderController {
     // admins get all stores (null); workers get their storeIds
     const storeIds = request.user.role === 'admin' ? null : request.user.storeIds;
     const { orders, total } = await this.service.workerCompleted(storeIds, parsed.data.page, parsed.data.limit);
-    reply.send({ orders, total });
+    reply.send({ items: orders, total });
   };
 
   approve = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -60,7 +60,7 @@ export class OrderController {
     const parsed = adminOrderQuerySchema.safeParse(request.query);
     if (!parsed.success) throw new ValidationError('Invalid query', parsed.error.flatten());
     const { orders, total } = await this.service.adminList(parsed.data);
-    reply.send({ orders, total });
+    reply.send({ items: orders, total });
   };
 
   adminDetail = async (request: FastifyRequest, reply: FastifyReply) => {

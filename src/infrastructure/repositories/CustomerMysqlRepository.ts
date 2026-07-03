@@ -63,7 +63,7 @@ export class CustomerMysqlRepository implements ICustomerRepository {
 
   async update(id: number, data: Partial<Omit<ICustomer, 'id' | 'created_at' | 'updated_at'>>): Promise<ICustomer | null> {
     const ALLOWED_COLUMNS = ['identifier', 'identifier_type', 'password_hash', 'first_name', 'last_name', 'preferred_store_id', 'address', 'phone', 'deleted_at', 'email', 'phone_number'];
-    const entries = Object.entries(data).filter(([k]) => ALLOWED_COLUMNS.includes(k));
+    const entries = Object.entries(data).filter(([k, v]) => ALLOWED_COLUMNS.includes(k) && v !== undefined);
     if (entries.length === 0) return this.findById(id);
     const fields = entries.map(([k]) => `${k} = ?`).join(', ');
     const values = [...entries.map(([, v]) => v), id];

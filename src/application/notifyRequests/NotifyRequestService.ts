@@ -6,4 +6,12 @@ export class NotifyRequestService {
   async create(customerId: number, productId: number, storeId: number) {
     return this.repo.upsert({ customer_id: customerId, product_id: productId, store_id: storeId });
   }
+
+  list(storeId?: number) {
+    return this.repo.findAll(storeId);
+  }
+
+  remove(id: number) {
+    return this.repo.deleteById(id);
+  }
 }

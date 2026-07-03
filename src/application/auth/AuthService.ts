@@ -208,8 +208,25 @@ export class AuthService {
 
   async updateProfile(
     userId: number,
+    role: Role,
     data: { first_name?: string; last_name?: string; address?: string; phone?: string }
   ) {
+    if (role !== 'customer') {
+      const staffUser = await this.staff.findById(userId);
+      if (!staffUser) throw new NotFoundError('User not found');
+      const name = [data.first_name, data.last_name].filter(Boolean).join(' ') || undefined;
+      if (name) await this.staff.update(userId, { name });
+      const updated = (await this.staff.findById(userId))!;
+      return {
+        id: updated.id,
+        name: updated.name,
+        role,
+        preferredStoreId: null,
+        storeIds: updated.store_ids ?? [],
+        address: null,
+        phone: null,
+      };
+    }
     const updated = await this.customers.update(userId, data);
     if (!updated) throw new NotFoundError('User not found');
     return {
@@ -223,7 +240,16 @@ export class AuthService {
     };
   }
 
-  async changePassword(userId: number, oldPassword: string, newPassword: string) {
+  async changePassword(userId: number, role: Role, oldPassword: string, newPassword: string) {
+    if (role !== 'customer') {
+      const staffUser = await this.staff.findById(userId);
+      if (!staffUser) throw new NotFoundError('User not found');
+      const valid = await bcrypt.compare(oldPassword, staffUser.password_hash);
+      if (!valid) throw new ValidationError('Current password is incorrect');
+      const hash = await bcrypt.hash(newPassword, 12);
+      await this.staff.update(userId, { password_hash: hash });
+      return;
+    }
     const customer = await this.customers.findById(userId);
     if (!customer) throw new NotFoundError('User not found');
     const valid = await bcrypt.compare(oldPassword, customer.password_hash);

@@ -10,5 +10,5 @@ export const setStockSchema = z.object({
   product_id: z.number().int().positive(),
   store_id: z.number().int().positive(),
   quantity: z.number().int().min(0),
-  low_stock_threshold: z.number().int().positive().default(10),
+  low_stock_threshold: z.number().int().min(0).default(10),
 });

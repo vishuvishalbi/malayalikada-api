@@ -14,18 +14,32 @@ export class StaffMysqlRepository implements IStaffRepository {
 
   async findById(id: number): Promise<IStaffUser | null> {
     const [rows] = await db.query<RowDataPacket[]>(
-      'SELECT * FROM staff_users WHERE id = ?',
+      `SELECT su.*, GROUP_CONCAT(ss.store_id ORDER BY ss.store_id) AS store_ids_csv
+       FROM staff_users su
+       LEFT JOIN staff_stores ss ON ss.staff_id = su.id
+       WHERE su.id = ?
+       GROUP BY su.id`,
       [id]
     );
-    return (rows[0] as IStaffUser) || null;
+    if (!rows[0]) return null;
+    const r = rows[0] as any;
+    return { ...r, store_ids: r.store_ids_csv ? String(r.store_ids_csv).split(',').map(Number) : [] } as IStaffUser;
   }
 
   async findAll(includeInactive = false): Promise<IStaffUser[]> {
-    const where = includeInactive ? '' : 'WHERE is_active = 1';
+    const where = includeInactive ? '' : 'WHERE su.is_active = 1';
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT * FROM staff_users ${where} ORDER BY name`
+      `SELECT su.*, GROUP_CONCAT(ss.store_id ORDER BY ss.store_id) AS store_ids_csv
+       FROM staff_users su
+       LEFT JOIN staff_stores ss ON ss.staff_id = su.id
+       ${where}
+       GROUP BY su.id
+       ORDER BY su.name`
     );
-    return rows as IStaffUser[];
+    return (rows as any[]).map(r => ({
+      ...r,
+      store_ids: r.store_ids_csv ? String(r.store_ids_csv).split(',').map(Number) : [],
+    })) as IStaffUser[];
   }
 
   async create(data: Omit<IStaffUser, 'id' | 'created_at' | 'updated_at'>): Promise<IStaffUser> {

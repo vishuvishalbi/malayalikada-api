@@ -6,6 +6,7 @@ export interface ProductListFilters {
   store_id?: number;
   featured?: boolean;
   sort?: 'newest';
+  include_inactive?: boolean;
   page: number;
   limit: number;
 }

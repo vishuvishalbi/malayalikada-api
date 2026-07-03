@@ -9,4 +9,6 @@ export async function notifyRequestRoutes(app: FastifyInstance) {
   const ctrl = new NotifyRequestController(new NotifyRequestService(new NotifyRequestMysqlRepository()));
 
   app.post('/notify-me', { preHandler: [authenticate, requireRole('customer')] }, ctrl.create);
+  app.get('/admin/notify-requests', { preHandler: [authenticate, requireRole('admin')] }, ctrl.list);
+  app.delete('/admin/notify-requests/:id', { preHandler: [authenticate, requireRole('admin')] }, ctrl.remove);
 }

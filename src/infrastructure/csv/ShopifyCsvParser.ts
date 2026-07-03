@@ -6,10 +6,13 @@ export interface ShopifyProductRow {
   vendor: string | null;
   categoryPath: string;
   barcode: string;
+  sku: string;
   price: number;
+  costPerItem: number | null;
   weight: number | null;
   imageUrl: string | null;
   status: string;
+  inventoryQty: number;
 }
 
 export interface ShopifyParseResult {
@@ -31,9 +34,10 @@ export function parseShopifyCsv(buffer: Buffer): ShopifyParseResult {
   (records as any[]).forEach((rec, i) => {
     const lineNum = i + 2;
 
-    const barcode = (rec['Variant Barcode'] || rec['Variant SKU'] || '').trim();
+    const sku = (rec['Variant SKU'] || '').trim();
+    const barcode = (rec['Variant Barcode'] || sku || rec['Handle'] || '').trim();
     if (!barcode) {
-      errors.push({ line: lineNum, error: `Row skipped: no barcode or SKU for "${rec['Handle']}"` });
+      errors.push({ line: lineNum, error: `Row skipped: no barcode, SKU or Handle for "${rec['Handle']}"` });
       return;
     }
 
@@ -49,8 +53,12 @@ export function parseShopifyCsv(buffer: Buffer): ShopifyParseResult {
       return;
     }
 
+    const rawCost = (rec['Cost per item'] || '').trim();
+    const costPerItem = rawCost ? parseFloat(rawCost) : null;
+
     const rawWeight = (rec['Variant Grams'] || '').trim();
-    const weight = rawWeight ? parseFloat(rawWeight) : null;
+    const _parsedW = rawWeight ? parseFloat(rawWeight) : null;
+    const weight = (_parsedW !== null && !isNaN(_parsedW) && _parsedW > 0) ? _parsedW : null;
 
     rows.push({
       handle: rec['Handle'] || '',
@@ -58,10 +66,13 @@ export function parseShopifyCsv(buffer: Buffer): ShopifyParseResult {
       vendor: (rec['Vendor'] || '').trim() || null,
       categoryPath: (rec['Product Category'] || '').trim(),
       barcode,
+      sku,
       price,
-      weight: weight !== null && !isNaN(weight) ? weight : null,
+      costPerItem: costPerItem !== null && !isNaN(costPerItem) ? costPerItem : null,
+      weight,
       imageUrl: (rec['Image Src'] || '').trim() || null,
       status: (rec['Status'] || 'active').trim().toLowerCase(),
+      inventoryQty: Math.max(0, parseInt(rec['Variant Inventory Qty'] || '0', 10) || 0),
     });
   });
 
