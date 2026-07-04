@@ -9,7 +9,7 @@ export class ProductController {
   list = async (request: FastifyRequest, reply: FastifyReply) => {
     const parsed = productQuerySchema.safeParse(request.query);
     if (!parsed.success) throw new ValidationError('Invalid query', parsed.error.flatten());
-    reply.send(await this.service.list(parsed.data));
+    reply.send(await this.service.list(parsed.data, request.user?.sub));
   };
 
   getById = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -21,7 +21,7 @@ export class ProductController {
 
   getByBarcode = async (request: FastifyRequest, reply: FastifyReply) => {
     const { barcode } = request.params as { barcode: string };
-    reply.send(await this.service.getByBarcode(barcode));
+    reply.send(await this.service.getByBarcode(barcode, request.user?.sub));
   };
 
   create = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -59,7 +59,12 @@ export class ProductController {
 
   trending = async (request: FastifyRequest, reply: FastifyReply) => {
     const { store_id } = request.query as { store_id?: string };
-    const items = await this.service.trending(store_id ? Number(store_id) : undefined);
+    const items = await this.service.trending(store_id ? Number(store_id) : undefined, request.user?.sub);
     reply.send({ items });
+  };
+
+  brands = async (_request: FastifyRequest, reply: FastifyReply) => {
+    const brands = await this.service.getBrands();
+    reply.send({ brands });
   };
 }

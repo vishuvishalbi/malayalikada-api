@@ -5,6 +5,7 @@ import { ProductMysqlRepository } from '../../infrastructure/repositories/Produc
 import { CsvImportService } from '../../application/products/CsvImportService';
 import { CsvImportLogRepository } from '../../infrastructure/repositories/CsvImportLogRepository';
 import { authenticate } from '../middleware/authenticate';
+import { optionalAuthenticate } from '../middleware/optionalAuthenticate';
 import { requireRole } from '../middleware/requireRole';
 import { ValidationError, NotFoundError } from '../../shared/errors/AppError';
 
@@ -12,11 +13,12 @@ export async function productRoutes(app: FastifyInstance) {
   const service = new ProductService(new ProductMysqlRepository());
   const ctrl = new ProductController(service);
 
-  // Public — barcode/trending must come BEFORE /:id
-  app.get('/products/barcode/:barcode', ctrl.getByBarcode);
-  app.get('/products/trending', ctrl.trending);
-  app.get('/products', ctrl.list);
-  app.get('/products/:id', ctrl.getById);
+  // Public — static segments must come BEFORE /:id
+  app.get('/products/brands', { preHandler: [optionalAuthenticate] }, ctrl.brands);
+  app.get('/products/barcode/:barcode', { preHandler: [optionalAuthenticate] }, ctrl.getByBarcode);
+  app.get('/products/trending', { preHandler: [optionalAuthenticate] }, ctrl.trending);
+  app.get('/products', { preHandler: [optionalAuthenticate] }, ctrl.list);
+  app.get('/products/:id', { preHandler: [optionalAuthenticate] }, ctrl.getById);
 
   // Admin
   app.post('/products', { preHandler: [authenticate, requireRole('admin')] }, ctrl.create);

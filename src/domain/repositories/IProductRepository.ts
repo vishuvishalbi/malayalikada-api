@@ -33,4 +33,6 @@ export interface IProductRepository {
   removeImage(productId: number, imageId: number): Promise<void>;
   getImageCount(productId: number): Promise<number>;
   getImages(productId: number): Promise<IProductImage[]>;
+  findFavoritedIds(customerId: number, productIds: number[]): Promise<number[]>;
+  findBrands(): Promise<string[]>;
 }

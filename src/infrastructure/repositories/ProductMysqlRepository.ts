@@ -206,6 +206,23 @@ export class ProductMysqlRepository implements IProductRepository {
     return rows.length > 0;
   }
 
+  async findFavoritedIds(customerId: number, productIds: number[]): Promise<number[]> {
+    if (productIds.length === 0) return [];
+    const placeholders = productIds.map(() => '?').join(',');
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT product_id FROM favorites WHERE customer_id = ? AND product_id IN (${placeholders})`,
+      [customerId, ...productIds],
+    );
+    return (rows as RowDataPacket[]).map(r => r.product_id as number);
+  }
+
+  async findBrands(): Promise<string[]> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT DISTINCT brand FROM products WHERE brand IS NOT NULL AND brand != '' AND deleted_at IS NULL ORDER BY brand ASC`,
+    );
+    return (rows as RowDataPacket[]).map(r => r.brand as string);
+  }
+
   async isNotifyRequested(productId: number, customerId: number, storeId: number): Promise<boolean> {
     const [rows] = await db.query<RowDataPacket[]>(
       'SELECT 1 FROM notify_requests WHERE product_id = ? AND customer_id = ? AND store_id = ? LIMIT 1',

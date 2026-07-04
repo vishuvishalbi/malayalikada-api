@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
+import pino from 'pino';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
@@ -25,14 +26,13 @@ import { notifyRequestRoutes } from './presentation/routes/notifyRequest.routes'
 import { favoriteRoutes } from './presentation/routes/favorite.routes';
 import { deliverySlabRoutes } from './presentation/routes/deliverySlab.routes';
 
+const streams = pino.multistream([
+  { stream: pino.destination({ dest: './logs/app.log', mkdir: true, sync: false }), level: process.env.LOG_LEVEL || 'info' },
+  { stream: pino.destination({ dest: './logs/error.log', mkdir: true, sync: false }), level: 'error' },
+]);
+
 const app = Fastify({
-  logger: {
-    level: process.env.LOG_LEVEL || 'info',
-    transport: {
-      target: 'pino/file',
-      options: { destination: './logs/app.log', mkdir: true },
-    },
-  },
+  logger: { level: process.env.LOG_LEVEL || 'info', stream: streams },
 });
 
 app.register(swaggerPlugin);
@@ -49,14 +49,20 @@ app.register(staticFiles, {
   prefix: '/uploads/',
 });
 
-app.setErrorHandler((error, _request, reply) => {
+app.setErrorHandler((error, request, reply) => {
   if (error instanceof AppError) {
     return reply.status(error.statusCode).send({
       error: error.message,
       ...(error.data !== undefined && { data: error.data }),
     });
   }
-  app.log.error(error);
+  const err = error as Error;
+  app.log.error({
+    err: { message: err.message, stack: err.stack },
+    method: request.method,
+    url: request.url,
+    customerId: request.user?.sub,
+  }, 'Unhandled error');
   return reply.status(500).send({ error: 'Internal server error' });
 });
 

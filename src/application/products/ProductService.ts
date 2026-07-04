@@ -8,8 +8,8 @@ export class ProductService {
 
   constructor(private repo: IProductRepository) {}
 
-  async list(filters: { category_id?: number; search?: string; store_id?: number; include_inactive?: boolean; page?: number; limit?: number }) {
-    return this.repo.findAll({
+  async list(filters: { category_id?: number; search?: string; store_id?: number; include_inactive?: boolean; page?: number; limit?: number }, customerId?: number) {
+    const result = await this.repo.findAll({
       category_id: filters.category_id,
       search: filters.search,
       store_id: filters.store_id,
@@ -17,6 +17,11 @@ export class ProductService {
       page: filters.page ?? 1,
       limit: filters.limit ?? 20,
     });
+    if (customerId && result.products.length > 0) {
+      const favIds = new Set(await this.repo.findFavoritedIds(customerId, result.products.map(p => p.id)));
+      return { ...result, products: result.products.map(p => ({ ...p, is_favorited: favIds.has(p.id) })) };
+    }
+    return { ...result, products: result.products.map(p => ({ ...p, is_favorited: false })) };
   }
 
   async getById(id: number, storeId?: number, customerId?: number) {
@@ -54,10 +59,11 @@ export class ProductService {
     };
   }
 
-  async getByBarcode(barcode: string) {
+  async getByBarcode(barcode: string, customerId?: number) {
     const product = await this.repo.findByBarcode(barcode);
     if (!product) throw new NotFoundError('Product not found');
-    return product;
+    const is_favorited = customerId ? await this.repo.isFavorited(product.id, customerId) : false;
+    return { ...product, is_favorited };
   }
 
   async create(data: {
@@ -113,11 +119,20 @@ export class ProductService {
     const images = await this.repo.getImages(productId);
     const image = images.find(i => i.id === imageId);
     if (!image) throw new NotFoundError('Image not found');
-    await this.storage.delete(image.filename);
+    if (image.filename) await this.storage.delete(image.filename);
     await this.repo.removeImage(productId, imageId);
   }
 
-  async trending(storeId?: number) {
-    return this.repo.findTrending(storeId, 10);
+  async trending(storeId?: number, customerId?: number) {
+    const items = await this.repo.findTrending(storeId, 10);
+    if (customerId && items.length > 0) {
+      const favIds = new Set(await this.repo.findFavoritedIds(customerId, items.map(p => p.id)));
+      return items.map(p => ({ ...p, is_favorited: favIds.has(p.id) }));
+    }
+    return items.map(p => ({ ...p, is_favorited: false }));
+  }
+
+  async getBrands() {
+    return this.repo.findBrands();
   }
 }

@@ -13,7 +13,7 @@ export class StockMysqlRepository {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT ps.*, p.name AS product_name FROM product_stock ps LEFT JOIN products p ON p.id = ps.product_id ${where} ORDER BY ps.product_id, ps.store_id`,
+      `SELECT ps.*, p.name AS product_name, p.barcode FROM product_stock ps LEFT JOIN products p ON p.id = ps.product_id ${where} ORDER BY ps.product_id, ps.store_id`,
       params
     );
     return rows as IProductStock[];
