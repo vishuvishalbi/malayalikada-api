@@ -29,11 +29,15 @@ export class AdminService {
        GROUP BY s.id, s.name
        ORDER BY s.name`
     );
+    const [lowStockRows] = await db.query<RowDataPacket[]>(
+      "SELECT COUNT(*) as cnt FROM product_stock WHERE low_stock_threshold > 0 AND quantity <= low_stock_threshold"
+    );
 
     return {
       ordersToday: (todayRows[0] as any).cnt,
       pendingOrders: (pendingRows[0] as any).cnt,
       completedOrders: (completedRows[0] as any).cnt,
+      lowStock: (lowStockRows[0] as any).cnt,
       revenueByStore: (revenueRows as any[]).map(r => ({
         storeId: r.storeId,
         name: r.name,

@@ -53,7 +53,9 @@ export class OrderMysqlRepository implements IOrderRepository {
 
   async findByCustomer(customerId: number, offset: number, limit: number): Promise<{ orders: IOrder[]; total: number }> {
     const [rows] = await db.query<RowDataPacket[]>(
-      'SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      `SELECT o.*, s.name AS store_name FROM orders o
+       LEFT JOIN stores s ON s.id = o.store_id
+       WHERE o.customer_id = ? ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
       [customerId, limit, offset]
     );
     const [countRows] = await db.query<RowDataPacket[]>(
@@ -63,16 +65,21 @@ export class OrderMysqlRepository implements IOrderRepository {
     return { orders: rows as IOrder[], total: (countRows[0] as any).total };
   }
 
-  async findById(id: number): Promise<(IOrder & { orderItems: (IOrderItem & { name: string })[] }) | null> {
-    const [rows] = await db.query<RowDataPacket[]>('SELECT * FROM orders WHERE id = ?', [id]);
+  async findById(id: number): Promise<(IOrder & { store_name?: string; orderItems: (IOrderItem & { name: string; product_name: string })[] }) | null> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT o.*, s.name AS store_name FROM orders o
+       LEFT JOIN stores s ON s.id = o.store_id
+       WHERE o.id = ?`,
+      [id]
+    );
     if (!rows[0]) return null;
     const [itemRows] = await db.query<RowDataPacket[]>(
-      `SELECT oi.*, p.name FROM order_items oi
+      `SELECT oi.*, p.name AS product_name FROM order_items oi
        LEFT JOIN products p ON p.id = oi.product_id
        WHERE oi.order_id = ?`,
       [id]
     );
-    return { ...(rows[0] as IOrder), orderItems: itemRows as (IOrderItem & { name: string })[] };
+    return { ...(rows[0] as IOrder), orderItems: itemRows as (IOrderItem & { name: string; product_name: string })[] };
   }
 
   async findAdminDetail(id: number): Promise<AdminOrderDetail | null> {
@@ -115,7 +122,22 @@ export class OrderMysqlRepository implements IOrderRepository {
        ORDER BY o.created_at ASC`,
       storeIds
     );
-    return rows as OrderRow[];
+    if ((rows as any[]).length === 0) return [];
+    const orderIds = (rows as any[]).map(r => r.id);
+    const itemPlaceholders = orderIds.map(() => '?').join(',');
+    const [itemRows] = await db.query<RowDataPacket[]>(
+      `SELECT oi.*, p.name AS product_name FROM order_items oi
+       LEFT JOIN products p ON p.id = oi.product_id
+       WHERE oi.order_id IN (${itemPlaceholders})`,
+      orderIds
+    );
+    const itemsByOrder = new Map<number, any[]>();
+    for (const item of itemRows as any[]) {
+      const list = itemsByOrder.get(item.order_id) ?? [];
+      list.push(item);
+      itemsByOrder.set(item.order_id, list);
+    }
+    return (rows as any[]).map(r => ({ ...r, orderItems: itemsByOrder.get(r.id) ?? [] })) as OrderRow[];
   }
 
   async findWorkerCompleted(storeIds: number[], page: number, limit: number): Promise<{ orders: OrderRow[]; total: number }> {

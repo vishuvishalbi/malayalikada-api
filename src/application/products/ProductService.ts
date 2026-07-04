@@ -82,6 +82,10 @@ export class ProductService {
     barcode: string; name: string; description: string; category_id: number;
     brand: string; unit: string; weight: number; supplier: string; is_active: boolean;
   }>) {
+    if (data.barcode) {
+      const existing = await this.repo.findByBarcode(data.barcode);
+      if (existing && existing.id !== id) throw new ConflictError('Barcode already exists');
+    }
     const product = await this.repo.update(id, data);
     if (!product) throw new NotFoundError('Product not found');
     return product;

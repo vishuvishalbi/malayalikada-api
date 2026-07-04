@@ -14,8 +14,8 @@ export class ProductMysqlRepository implements IProductRepository {
       params.push(filters.category_id);
     }
     if (filters.search) {
-      conditions.push('(p.name LIKE ? OR p.barcode LIKE ?)');
-      params.push(`%${filters.search}%`, `%${filters.search}%`);
+      conditions.push('(p.name LIKE ? OR p.barcode LIKE ? OR p.brand LIKE ?)');
+      params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
     }
     if (filters.featured) {
       conditions.push('p.is_featured = 1');
