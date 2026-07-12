@@ -49,6 +49,21 @@ app.register(staticFiles, {
   prefix: '/uploads/',
 });
 
+// Stripe webhook needs the raw request body for signature verification.
+// Preserve the buffer for that one route; parse JSON normally everywhere else.
+app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+  if (req.routeOptions?.url === '/api/v1/payments/webhook') {
+    done(null, body);
+    return;
+  }
+  try {
+    const parsed = (body as Buffer).length ? JSON.parse((body as Buffer).toString('utf8')) : {};
+    done(null, parsed);
+  } catch (err) {
+    done(err as Error);
+  }
+});
+
 app.setErrorHandler((error, request, reply) => {
   if (error instanceof AppError) {
     return reply.status(error.statusCode).send({
