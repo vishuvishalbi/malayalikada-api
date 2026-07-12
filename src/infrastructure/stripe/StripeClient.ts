@@ -22,8 +22,21 @@ export class StripeClient {
     if (this.stubMode) return { orderId: 0 };
     const Stripe = require('stripe');
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const event = stripe.webhooks.constructEvent(rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET);
+    const event = stripe.webhooks.constructEvent(
+      rawBody,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+    if (event.type !== 'payment_intent.succeeded') return { orderId: 0 };
     const intent = event.data.object as any;
     return { orderId: Number(intent.metadata.order_id) };
+  }
+
+  async retrievePaymentIntent(paymentIntentId: string): Promise<{ status: string }> {
+    if (this.stubMode) return { status: 'succeeded' };
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    return { status: intent.status };
   }
 }
