@@ -10,13 +10,14 @@ import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
 
 export async function orderRoutes(app: FastifyInstance) {
+  const payments = new PaymentService();
   const service = new OrderService(
     new OrderMysqlRepository(),
     new CartMysqlRepository(),
     new DeliveryService(new DeliverySlabMysqlRepository()),
-    new PaymentService(),
+    payments,
   );
-  const ctrl = new OrderController(service);
+  const ctrl = new OrderController(service, payments);
 
   // Static paths first (before /:id param routes)
   app.get('/orders/worker/queue', { preHandler: [authenticate, requireRole('worker', 'admin')] }, ctrl.workerQueue);
@@ -29,6 +30,7 @@ export async function orderRoutes(app: FastifyInstance) {
 
   // Customer routes
   app.post('/orders', { preHandler: [authenticate, requireRole('customer')] }, ctrl.submit);
+  app.post('/orders/:id/confirm-payment', { preHandler: [authenticate, requireRole('customer')] }, ctrl.confirmPayment);
   app.get('/orders', { preHandler: [authenticate, requireRole('customer')] }, ctrl.customerHistory);
   app.get('/orders/:id', { preHandler: [authenticate, requireRole('customer')] }, ctrl.customerDetail);
 

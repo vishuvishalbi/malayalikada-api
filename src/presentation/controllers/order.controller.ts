@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { OrderService } from '../../application/orders/OrderService';
+import { PaymentService } from '../../application/payments/PaymentService';
 import {
   rejectOrderSchema,
   adminOrderQuerySchema,
@@ -10,10 +11,18 @@ import {
 import { ValidationError } from '../../shared/errors/AppError';
 
 export class OrderController {
-  constructor(private service: OrderService) {}
+  constructor(
+    private service: OrderService,
+    private payments: PaymentService,
+  ) {}
 
   submit = async (request: FastifyRequest, reply: FastifyReply) => {
     reply.status(201).send(await this.service.submit(request.user.sub));
+  };
+
+  confirmPayment = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    reply.send(await this.payments.confirmPayment(Number(id), request.user.sub));
   };
 
   customerHistory = async (request: FastifyRequest, reply: FastifyReply) => {
