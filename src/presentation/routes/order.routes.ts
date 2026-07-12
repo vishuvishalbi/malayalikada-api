@@ -5,6 +5,7 @@ import { OrderMysqlRepository } from '../../infrastructure/repositories/OrderMys
 import { CartMysqlRepository } from '../../infrastructure/repositories/CartMysqlRepository';
 import { DeliveryService } from '../../application/delivery/DeliveryService';
 import { DeliverySlabMysqlRepository } from '../../infrastructure/repositories/DeliverySlabMysqlRepository';
+import { PaymentService } from '../../application/payments/PaymentService';
 import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
 
@@ -13,6 +14,7 @@ export async function orderRoutes(app: FastifyInstance) {
     new OrderMysqlRepository(),
     new CartMysqlRepository(),
     new DeliveryService(new DeliverySlabMysqlRepository()),
+    new PaymentService(),
   );
   const ctrl = new OrderController(service);
 

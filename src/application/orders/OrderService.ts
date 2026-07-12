@@ -5,12 +5,14 @@ import { NotFoundError, ValidationError, ForbiddenError } from '../../shared/err
 import { paginate } from '../../shared/utils';
 import { db } from '../../infrastructure/database/connection';
 import { DeliveryService } from '../delivery/DeliveryService';
+import { PaymentService } from '../payments/PaymentService';
 
 export class OrderService {
   constructor(
     private orders: IOrderRepository,
     private carts: ICartRepository,
     private delivery: DeliveryService,
+    private payments: PaymentService,
   ) {}
 
   async submit(customerId: number) {
@@ -46,8 +48,6 @@ export class OrderService {
     const delivery_fee_nzd = await this.delivery.feeForWeight(total_weight_kg);
     const total_nzd = Math.round((subtotal + delivery_fee_nzd) * 100) / 100;
 
-    const paymentIntentId = `pi_stub_${customerId}_${Date.now()}`;
-
     const order = await this.orders.create(
       {
         reference_no: '',
@@ -57,7 +57,7 @@ export class OrderService {
         total_nzd,
         delivery_fee_nzd,
         total_weight_kg,
-        stripe_payment_intent_id: paymentIntentId,
+        stripe_payment_intent_id: null,
         payment_status: 'unpaid',
         rejection_reason: null,
         actioned_by: null,
@@ -66,8 +66,11 @@ export class OrderService {
       orderItems
     );
 
+    const { clientSecret, paymentIntentId } = await this.payments.createIntent(order.id, total_nzd);
+    await this.orders.setPaymentIntent(order.id, paymentIntentId);
+
     await this.carts.clear(customerId);
-    return order;
+    return { ...order, stripe_payment_intent_id: paymentIntentId, client_secret: clientSecret };
   }
 
   async customerHistory(customerId: number, page = 1, limit = 20) {
