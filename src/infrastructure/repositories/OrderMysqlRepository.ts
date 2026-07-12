@@ -51,6 +51,20 @@ export class OrderMysqlRepository implements IOrderRepository {
     }
   }
 
+  async setPaymentIntent(orderId: number, paymentIntentId: string): Promise<void> {
+    await db.query(
+      'UPDATE orders SET stripe_payment_intent_id = ?, updated_at = NOW() WHERE id = ?',
+      [paymentIntentId, orderId]
+    );
+  }
+
+  async markPaid(orderId: number): Promise<void> {
+    await db.query(
+      "UPDATE orders SET payment_status = 'paid', updated_at = NOW() WHERE id = ?",
+      [orderId]
+    );
+  }
+
   async findByCustomer(customerId: number, offset: number, limit: number): Promise<{ orders: IOrder[]; total: number }> {
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT o.*, s.name AS store_name FROM orders o
