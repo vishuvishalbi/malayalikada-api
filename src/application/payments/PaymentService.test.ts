@@ -62,4 +62,18 @@ describe('PaymentService.confirmPayment', () => {
     await service.confirmPayment(1, 1);
     expect(transactions.create).not.toHaveBeenCalled();
   });
+
+  it('marks the order partially_paid when the succeeded total is less than the order total', async () => {
+    const stripe = makeStripe();
+    const order = { id: 1, customer_id: 1, status: 'pending_approval', payment_status: 'unpaid', stripe_payment_intent_id: 'pi_1', total_nzd: 100 };
+    const orders = makeOrders(order);
+    const transactions = makeTransactions();
+    transactions.sumSucceededByOrder = vi.fn().mockResolvedValue(70); // e.g. an earlier $40 + this $30 payment
+    const service = new PaymentService(orders, transactions, makeAttempts(), stripe as any);
+
+    const result = await service.confirmPayment(1, 1);
+
+    expect(orders.updatePaymentStatus).toHaveBeenCalledWith(1, 'partially_paid');
+    expect(result.payment_status).toBe('partially_paid');
+  });
 });
