@@ -1,6 +1,5 @@
 import { RowDataPacket } from 'mysql2/promise';
 import { ICartRepository } from '../../domain/repositories/ICartRepository';
-import { ICartItem } from '../../domain/entities/Cart';
 import { ValidationError, NotFoundError } from '../../shared/errors/AppError';
 import { db } from '../../infrastructure/database/connection';
 import { DeliveryService } from '../delivery/DeliveryService';
@@ -13,11 +12,12 @@ export class CartService {
 
   async get(customerId: number) {
     const cart = await this.repo.findByCustomer(customerId);
-    if (!cart || cart.items.length === 0) {
+    const items = cart ? await this.repo.expireAndFindItems(customerId) : [];
+    if (!cart || items.length === 0) {
       return { storeId: cart?.store_id ?? null, items: [], grandTotal: 0, total_weight_kg: 0, delivery_fee_nzd: 0 };
     }
 
-    const productIds = cart.items.map(i => i.product_id);
+    const productIds = items.map(i => i.product_id);
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT p.id, p.name, p.weight, sp.price_nzd,
               c.name AS category_name,
@@ -41,7 +41,6 @@ export class CartService {
     const priceMap = new Map((rows as any[]).map((r: any) => [r.id, {
       name: r.name,
       price: Number(r.price_nzd),
-      // product.weight is in kilograms per unit; null weight contributes 0 kg
       weight_kg: r.weight !== null && r.weight !== undefined ? Number(r.weight) : 0,
       category_name: r.category_name ?? null,
       first_image_url: r.first_image_url ?? null,
@@ -49,12 +48,11 @@ export class CartService {
 
     let grandTotal = 0;
     let total_weight_kg = 0;
-    const items = cart.items.map(i => {
+    const respItems = items.map(i => {
       const info = priceMap.get(i.product_id);
       const unitPrice = info?.price ?? 0;
       const lineTotal = unitPrice * i.quantity;
       grandTotal += lineTotal;
-      // item weight contribution = product.weight_kg * quantity
       total_weight_kg += (info?.weight_kg ?? 0) * i.quantity;
       return {
         productId: i.product_id,
@@ -70,72 +68,44 @@ export class CartService {
     total_weight_kg = Math.round(total_weight_kg * 1000) / 1000;
     const delivery_fee_nzd = await this.delivery.feeForWeight(total_weight_kg);
 
-    return { storeId: cart.store_id, items, grandTotal, total_weight_kg, delivery_fee_nzd };
+    return { storeId: cart.store_id, items: respItems, grandTotal, total_weight_kg, delivery_fee_nzd };
   }
 
   async addItem(customerId: number, productId: number, quantity: number) {
+    if (quantity <= 0) throw new ValidationError('Quantity must be positive');
+
     const cart = await this.repo.findByCustomer(customerId);
-    let preferred_store_id;
-    if (!!!cart?.store_id){
+    let storeId = cart?.store_id;
+    if (!storeId) {
       const [custRows] = await db.query<RowDataPacket[]>(
         'SELECT preferred_store_id FROM customers WHERE id = ?',
         [customerId]
       );
-      preferred_store_id =(custRows as any[])[0]?.preferred_store_id;
+      storeId = (custRows as any[])[0]?.preferred_store_id;
     }
-    const storeId = cart?.store_id ?? preferred_store_id
     if (!storeId) throw new ValidationError('No store selected. Set preferred store first.');
 
-    const [priceRows] = await db.query<RowDataPacket[]>(
-      'SELECT price_nzd FROM store_pricing WHERE product_id = ? AND store_id = ?',
-      [productId, storeId]
-    );
-    if ((priceRows as any[]).length === 0) throw new ValidationError('Product not available at selected store');
+    const items = await this.repo.findItems(customerId);
+    const existing = items.find(i => i.product_id === productId);
+    const newQuantity = (existing?.quantity ?? 0) + quantity;
 
-    const currentItems = cart?.items ?? [];
-    const existing = currentItems.find(i => i.product_id === productId);
-    let newItems: ICartItem[];
-    if (existing) {
-      newItems = currentItems.map(i => i.product_id === productId ? { ...i, quantity: i.quantity + quantity } : i);
-    } else {
-      newItems = [...currentItems, { product_id: productId, quantity }];
-    }
-
-    return this.repo.upsert(customerId, storeId, newItems);
+    return this.repo.reserveItem(customerId, storeId, productId, newQuantity);
   }
 
   async setItem(customerId: number, productId: number, quantity: number) {
     const cart = await this.repo.findByCustomer(customerId);
     if (!cart) throw new NotFoundError('Cart not found');
 
-    const existingItem = cart.items.find(i => i.product_id === productId);
-
-    // Validate pricing when adding a product not already in cart
-    if (quantity > 0 && !existingItem) {
-      const [priceRows] = await db.query<RowDataPacket[]>(
-        'SELECT price_nzd FROM store_pricing WHERE product_id = ? AND store_id = ?',
-        [productId, cart.store_id]
-      );
-      if ((priceRows as any[]).length === 0) throw new ValidationError('Product not available at selected store');
-    }
-
-    let newItems: ICartItem[];
     if (quantity === 0) {
-      newItems = cart.items.filter(i => i.product_id !== productId);
-    } else if (existingItem) {
-      newItems = cart.items.map(i => i.product_id === productId ? { ...i, quantity } : i);
-    } else {
-      newItems = [...cart.items, { product_id: productId, quantity }];
+      await this.repo.releaseItem(customerId, productId);
+      return;
     }
 
-    return this.repo.upsert(customerId, cart.store_id, newItems);
+    return this.repo.reserveItem(customerId, cart.store_id, productId, quantity);
   }
 
   async removeItem(customerId: number, productId: number) {
-    const cart = await this.repo.findByCustomer(customerId);
-    if (!cart) return;
-    const newItems = cart.items.filter(i => i.product_id !== productId);
-    await this.repo.upsert(customerId, cart.store_id, newItems);
+    await this.repo.releaseItem(customerId, productId);
   }
 
   async clear(customerId: number) {
