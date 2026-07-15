@@ -1,8 +1,8 @@
-import { RowDataPacket } from 'mysql2/promise';
+import { RowDataPacket, PoolConnection } from 'mysql2/promise';
 
 const RESERVATION_TTL_MINUTES = 15;
 
-export async function expireStaleReservations(conn: any, productId: number, storeId: number): Promise<void> {
+export async function expireStaleReservations(conn: PoolConnection, productId: number, storeId: number): Promise<void> {
   const [staleCartItems] = await conn.query<RowDataPacket[]>(
     `SELECT id, quantity FROM cart_items
      WHERE product_id = ? AND store_id = ? AND reserved_at < DATE_SUB(NOW(), INTERVAL ${RESERVATION_TTL_MINUTES} MINUTE)`,
