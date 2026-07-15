@@ -335,8 +335,8 @@ export class OrderMysqlRepository implements IOrderRepository {
 
       for (const item of items as any[]) {
         await conn.query(
-          'UPDATE product_stock SET quantity = quantity - ? WHERE product_id = ? AND store_id = ?',
-          [item.quantity, item.product_id, storeId]
+          'UPDATE product_stock SET quantity = quantity - ?, reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',
+          [item.quantity, item.quantity, item.product_id, storeId]
         );
       }
 
