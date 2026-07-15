@@ -142,6 +142,10 @@ export class OrderMysqlRepository implements IOrderRepository {
     );
   }
 
+  async updatePaymentStatus(orderId: number, status: IOrder['payment_status']): Promise<void> {
+    await db.query('UPDATE orders SET payment_status = ?, updated_at = NOW() WHERE id = ?', [status, orderId]);
+  }
+
   async findByCustomer(customerId: number, offset: number, limit: number): Promise<{ orders: IOrder[]; total: number }> {
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT o.*, s.name AS store_name FROM orders o
