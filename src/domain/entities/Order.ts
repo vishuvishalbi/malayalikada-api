@@ -3,12 +3,12 @@ export interface IOrder {
   reference_no: string;
   customer_id: number;
   store_id: number;
-  status: 'pending_approval' | 'approved' | 'rejected';
+  status: 'pending_approval' | 'approved' | 'rejected' | 'expired';
   total_nzd: number;
   delivery_fee_nzd: number;
   total_weight_kg: number;
   stripe_payment_intent_id: string | null;
-  payment_status: 'unpaid' | 'paid' | 'refunded';
+  payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'refunded';
   rejection_reason: string | null;
   actioned_by: number | null;
   actioned_at: Date | null;
