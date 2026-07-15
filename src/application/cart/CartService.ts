@@ -75,12 +75,15 @@ export class CartService {
 
   async addItem(customerId: number, productId: number, quantity: number) {
     const cart = await this.repo.findByCustomer(customerId);
-
-    const [custRows] = await db.query<RowDataPacket[]>(
-      'SELECT preferred_store_id FROM customers WHERE id = ?',
-      [customerId]
-    );
-    const storeId = cart?.store_id ?? (custRows as any[])[0]?.preferred_store_id;
+    let preferred_store_id;
+    if (!!!cart?.store_id){
+      const [custRows] = await db.query<RowDataPacket[]>(
+        'SELECT preferred_store_id FROM customers WHERE id = ?',
+        [customerId]
+      );
+      preferred_store_id =(custRows as any[])[0]?.preferred_store_id;
+    }
+    const storeId = cart?.store_id ?? preferred_store_id
     if (!storeId) throw new ValidationError('No store selected. Set preferred store first.');
 
     const [priceRows] = await db.query<RowDataPacket[]>(
