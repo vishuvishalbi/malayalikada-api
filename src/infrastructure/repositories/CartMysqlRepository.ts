@@ -135,7 +135,7 @@ export class CartMysqlRepository implements ICartRepository {
 
       await conn.query('SELECT * FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE', [item.product_id, item.store_id]);
       await conn.query(
-        'UPDATE product_stock SET reserved_quantity = reserved_quantity - ? WHERE product_id = ? AND store_id = ?',
+        'UPDATE product_stock SET reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',
         [item.quantity, item.product_id, item.store_id]
       );
       await conn.query('DELETE FROM cart_items WHERE id = ?', [item.id]);
@@ -158,7 +158,7 @@ export class CartMysqlRepository implements ICartRepository {
       for (const item of items as any[]) {
         await conn.query('SELECT * FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE', [item.product_id, item.store_id]);
         await conn.query(
-          'UPDATE product_stock SET reserved_quantity = reserved_quantity - ? WHERE product_id = ? AND store_id = ?',
+          'UPDATE product_stock SET reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',
           [item.quantity, item.product_id, item.store_id]
         );
       }

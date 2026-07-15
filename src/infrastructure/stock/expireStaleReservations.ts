@@ -10,7 +10,7 @@ export async function expireStaleReservations(conn: PoolConnection, productId: n
   );
   for (const row of staleCartItems as any[]) {
     await conn.query(
-      'UPDATE product_stock SET reserved_quantity = reserved_quantity - ? WHERE product_id = ? AND store_id = ?',
+      'UPDATE product_stock SET reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',
       [row.quantity, productId, storeId]
     );
     await conn.query('DELETE FROM cart_items WHERE id = ?', [row.id]);
@@ -26,7 +26,7 @@ export async function expireStaleReservations(conn: PoolConnection, productId: n
   const seenOrders = new Set<number>();
   for (const row of staleOrderItems as any[]) {
     await conn.query(
-      'UPDATE product_stock SET reserved_quantity = reserved_quantity - ? WHERE product_id = ? AND store_id = ?',
+      'UPDATE product_stock SET reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',
       [row.quantity, productId, storeId]
     );
     if (!seenOrders.has(row.order_id)) {

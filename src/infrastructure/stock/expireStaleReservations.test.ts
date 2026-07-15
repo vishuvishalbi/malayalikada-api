@@ -21,7 +21,7 @@ describe('expireStaleReservations', () => {
       expect.arrayContaining([42, 7])
     );
     expect(conn.query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE product_stock SET reserved_quantity = reserved_quantity - ?'),
+      expect.stringContaining('UPDATE product_stock SET reserved_quantity = GREATEST(0, reserved_quantity - ?)'),
       [3, 42, 7]
     );
   });
