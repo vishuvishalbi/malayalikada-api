@@ -32,6 +32,8 @@ export interface IProductStock {
   product_id: number;
   store_id: number;
   quantity: number;
+  reserved_quantity: number;
+  max_reserve_qty: number;
   low_stock_threshold: number;
   product_name?: string;
 }
