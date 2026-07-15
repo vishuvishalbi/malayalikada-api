@@ -22,4 +22,5 @@ export interface IOrderItem {
   product_id: number;
   quantity: number;
   unit_price_nzd: number;
+  reserved_at: Date | null;
 }
