@@ -39,4 +39,18 @@ export class StripeClient {
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
     return { status: intent.status };
   }
+
+  async resolvePaymentMethod(paymentIntentId: string): Promise<{ method: 'card' | 'apple_pay' | 'google_pay'; amount_nzd: number }> {
+    if (this.stubMode) return { method: 'card', amount_nzd: 0 };
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const intent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+    const charge = intent.latest_charge as any;
+    const details = charge?.payment_method_details;
+    const walletType = details?.card?.wallet?.type;
+    let method: 'card' | 'apple_pay' | 'google_pay' = 'card';
+    if (walletType === 'apple_pay') method = 'apple_pay';
+    else if (walletType === 'google_pay') method = 'google_pay';
+    return { method, amount_nzd: intent.amount / 100 };
+  }
 }
