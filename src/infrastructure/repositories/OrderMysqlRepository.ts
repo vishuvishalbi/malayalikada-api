@@ -238,11 +238,11 @@ export class OrderMysqlRepository implements IOrderRepository {
 
     if (storeIds.length === 0) {
       // admin: all stores
-      whereClause = "WHERE o.status IN ('approved', 'rejected')";
+      whereClause = "WHERE o.status IN ('approved', 'rejected', 'expired')";
       params = [];
     } else {
       const placeholders = storeIds.map(() => '?').join(',');
-      whereClause = `WHERE o.store_id IN (${placeholders}) AND o.status IN ('approved', 'rejected')`;
+      whereClause = `WHERE o.store_id IN (${placeholders}) AND o.status IN ('approved', 'rejected', 'expired')`;
       params = storeIds;
     }
 
