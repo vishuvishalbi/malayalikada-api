@@ -11,8 +11,16 @@ complete within 15 minutes. Normalize cart storage out of a JSON blob into a
 proper `cart_items` table. Add a per-(product, store) cap on how much
 quantity one customer can hold at once.
 
+Also covers: payment channel/method tracking via a `transactions` table,
+decoupled from Stripe specifics, so future payment methods (cash,
+Apple Pay, Google Pay) and split/partial payments are supported for
+analytics without depending on Stripe's PaymentIntent as the source of
+truth.
+
 Out of scope: live/push stock updates to the client (client sees updated
 stock on next fetch, same as today — no behavior change to freshness).
+Refund execution (Stripe refund API call, refund endpoint) is schema-ready
+but not built in this pass.
 
 ## Data model changes
 
@@ -51,6 +59,13 @@ ephemeral; no backfill).
   `rejected`. Requires updating: the migration ENUM, the `Order.ts` union
   type, and the raw SQL status literals in `OrderMysqlRepository.ts`.
 
+### `orders.payment_status` (existing ENUM) — add value
+- `'partially_paid'`, alongside existing `unpaid`, `paid`, `refunded`.
+  Recomputed after each successful transaction (see Transactions section
+  below) by comparing `sum(transactions.amount_nzd)` against
+  `orders.total_nzd`. `approve()` is not gated on payment_status — staff may
+  approve a `partially_paid` order (e.g. cash-on-delivery covers the rest).
+
 ### `payment_attempts` (new table)
 ```
 id                        BIGINT PK
@@ -60,9 +75,45 @@ status                    VARCHAR(50)   -- mirrors Stripe status, or 'failed'
 error_message             TEXT NULL
 attempted_at              DATETIME NOT NULL
 ```
-One row written per `confirmPayment` call (success or failure) — full retry
-history for support/staff visibility. Purely additive; no effect on
-reservation logic.
+One row written per `confirmPayment` call (success or failure) — full raw
+retry history for support/staff visibility. Purely additive; no effect on
+reservation logic. Distinct from `transactions` below: this logs every
+attempt (including failures); `transactions` only records finalized
+successful payments/refunds.
+
+### `transactions` (new table)
+```
+id                BIGINT PK
+order_id          BIGINT (FK -> orders.id)
+payment_channel   VARCHAR(20)     -- 'stripe' | 'cash' (extensible)
+payment_method    VARCHAR(20)     -- 'card' | 'apple_pay' | 'google_pay' | 'cash'
+status            VARCHAR(20)     -- 'succeeded' | 'refunded'
+amount_nzd        DECIMAL(10,2) NOT NULL
+provider_ref      VARCHAR(100) NULL   -- Stripe PaymentIntent/Charge id; null for cash
+created_at        DATETIME NOT NULL
+```
+One row per **finalized** successful payment or refund (never for failed
+attempts). Multiple rows per order are supported — split/partial payments
+(e.g. partial card + cash on delivery) each get their own row with their
+own `amount_nzd`; this table is the analytics source of truth for how
+money actually moved, independent of which provider was used.
+
+**Stripe payment_method resolution:** on a successful payment (webhook
+`payment_intent.succeeded`, or `confirmPayment` polling `succeeded`),
+`StripeClient` fetches `paymentIntent.latest_charge` →
+`payment_method_details.type`, checking `card.wallet.type` to distinguish
+`apple_pay`/`google_pay` from plain `card`. One extra Stripe API call, only
+on the success path (not on every poll). Result populates the new
+`transactions` row.
+
+**Idempotency:** before inserting a `transactions` row for a Stripe
+success, check no existing row has that `provider_ref` — both the webhook
+and a client's `confirmPayment` poll can observe the same success and must
+not double-count.
+
+**Future cash flow:** a later cash-payment endpoint/service writes directly
+to `transactions` with `payment_channel='cash'`, `provider_ref=null` — no
+schema change needed when that's built.
 
 ## Cart flow
 
@@ -112,16 +163,23 @@ implemented in this pass.
 **Payment confirm / retry** (`POST /orders/:id/confirm-payment`):
 1. If `order.status === 'expired'`, return an error immediately
    ("Order expired, please reorder") — do not call Stripe.
-2. Otherwise call Stripe, write a `payment_attempts` row with the result.
-3. On success: `markPaid` (unchanged) — hold remains reserved, protected
-   from expiry once `payment_status = 'paid'`.
+2. Otherwise call Stripe. Write a `payment_attempts` row with the result
+   (always — success or failure).
+3. On success: resolve `payment_method` (see Transactions section), write a
+   `transactions` row (skip if one already exists for this `provider_ref`
+   — webhook may have beaten this call), recompute `orders.payment_status`
+   from `sum(transactions.amount_nzd)` vs `total_nzd`. Hold remains
+   reserved regardless of `unpaid`/`partially_paid`/`paid`, protected from
+   expiry once `payment_status !== 'unpaid'`.
 4. On failure: return the error; `order_items.reserved_at` is untouched, so
    the original 15-min window keeps counting down across retries (bounded
    retries, not infinite).
 
 **Stripe webhook race:** if a webhook confirms payment after the order has
-already flipped to `expired`, do not mark paid — log for manual
-reconciliation (rare edge case).
+already flipped to `expired`, do not write a `transactions` row — log for
+manual reconciliation (rare edge case). If the webhook fires first (before
+a client poll), it performs step 3 itself; the later `confirmPayment` call
+sees the existing `transactions` row and skips re-insertion.
 
 **Approve** (`OrderService.approve`, existing method, modified): the
 existing `FOR UPDATE` + deduct transaction now decrements both
@@ -142,9 +200,11 @@ product/store row(s) being touched (not a full-table sweep):
    product/store in question → decrement `reserved_quantity` by each row's
    quantity, delete the row.
 2. Find `order_items` where `reserved_at < now() - 15min`, joined to orders
-   where `status = 'pending_approval' AND payment_status != 'paid'` →
+   where `status = 'pending_approval' AND payment_status = 'unpaid'` →
    decrement `reserved_quantity` by the order's held quantities, set
-   `orders.status = 'expired'`.
+   `orders.status = 'expired'`. An order with any successful transaction
+   (`partially_paid` or `paid`) is exempt from expiry — a partial payment
+   commits the hold the same way full payment does.
 
 **Trigger points:** cart add/update/remove, `GET /cart`, order submit,
 order approve/reject, `confirm-payment`, stock list (`StockService.list`) —
@@ -174,25 +234,33 @@ Product X at Store 1: `quantity = 10`.
    (existing rows cleared, no backfill).
 3. `order_items`: add `reserved_at`.
 4. `orders.status` ENUM: add `'expired'`.
-5. New `payment_attempts` table.
+5. `orders.payment_status` ENUM: add `'partially_paid'`.
+6. New `payment_attempts` table.
+7. New `transactions` table.
 
 ## Code changes (by layer)
 
 - `domain/entities`: `Cart.ts` (drop `items` array shape, or repurpose),
-  add `CartItem` entity; `Order.ts` status union add `'expired'`;
-  add `PaymentAttempt` entity.
+  add `CartItem` entity; `Order.ts` status union add `'expired'`,
+  payment_status union add `'partially_paid'`; add `PaymentAttempt` entity;
+  add `Transaction` entity.
 - `domain/repositories`: `ICartRepository` methods change from
   whole-cart-upsert to per-item operations; add reservation/expiry methods
-  to `IStockRepository` (or extend existing).
+  to `IStockRepository` (or extend existing); add `ITransactionRepository`.
 - `application/cart/CartService.ts`: rewrite add/update/remove to the
   transactional flow above.
 - `application/orders/OrderService.ts`: `submit` copies reservation to
   `order_items`; `approve`/`reject` modified as above.
 - `application/payments/PaymentService.ts`: `confirmPayment` writes
-  `payment_attempts`, checks `expired` status first.
+  `payment_attempts` and, on success, a `transactions` row + recomputes
+  `orders.payment_status`; checks `expired` status first; webhook handler
+  gets the same transaction-writing logic (shared helper) plus the
+  idempotency check on `provider_ref`.
+- `infrastructure/stripe/StripeClient.ts`: add payment-method resolution
+  (`latest_charge` → `payment_method_details.type` / `card.wallet.type`).
 - `infrastructure/repositories`: `CartMysqlRepository`,
   `StockMysqlRepository`, `OrderMysqlRepository` — implement locking,
   lazy-expiry helper (likely a shared function called from each repository
-  or a small `StockReservationService`).
+  or a small `StockReservationService`); new `TransactionMysqlRepository`.
 - `presentation`: no schema/route changes required (response shapes
   unchanged).
