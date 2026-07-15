@@ -69,6 +69,12 @@ export class CartMysqlRepository implements ICartRepository {
       const stock = (stockRows as any[])[0];
       if (!stock) throw new ValidationError('Product not available at selected store');
 
+      const [priceRows] = await conn.query<RowDataPacket[]>(
+        'SELECT price_nzd FROM store_pricing WHERE product_id = ? AND store_id = ?',
+        [productId, storeId]
+      );
+      if ((priceRows as any[]).length === 0) throw new ValidationError('Product not available at selected store');
+
       const [existingRows] = await conn.query<RowDataPacket[]>(
         'SELECT * FROM cart_items WHERE cart_id = ? AND product_id = ?',
         [customerId, productId]
