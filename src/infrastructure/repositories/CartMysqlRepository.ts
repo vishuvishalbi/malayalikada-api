@@ -160,7 +160,7 @@ export class CartMysqlRepository implements ICartRepository {
     try {
       await conn.beginTransaction();
 
-      const [items] = await conn.query<RowDataPacket[]>('SELECT * FROM cart_items WHERE cart_id = ?', [customerId]);
+      const [items] = await conn.query<RowDataPacket[]>('SELECT * FROM cart_items WHERE cart_id = ? ORDER BY product_id, store_id', [customerId]);
       for (const item of items as any[]) {
         await conn.query('SELECT * FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE', [item.product_id, item.store_id]);
         await conn.query(

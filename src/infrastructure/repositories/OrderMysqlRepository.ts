@@ -110,7 +110,7 @@ export class OrderMysqlRepository implements IOrderRepository {
       const storeId = (orderRows as any[])[0]?.store_id;
       if (!storeId) { await conn.commit(); return; }
 
-      const [items] = await conn.query<RowDataPacket[]>('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
+      const [items] = await conn.query<RowDataPacket[]>('SELECT * FROM order_items WHERE order_id = ? ORDER BY product_id', [orderId]);
       for (const item of items as any[]) {
         await conn.query('SELECT * FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE', [item.product_id, storeId]);
         await conn.query(
@@ -132,13 +132,6 @@ export class OrderMysqlRepository implements IOrderRepository {
     await db.query(
       'UPDATE orders SET stripe_payment_intent_id = ?, updated_at = NOW() WHERE id = ?',
       [paymentIntentId, orderId]
-    );
-  }
-
-  async markPaid(orderId: number): Promise<void> {
-    await db.query(
-      "UPDATE orders SET payment_status = 'paid', updated_at = NOW() WHERE id = ?",
-      [orderId]
     );
   }
 
@@ -316,7 +309,7 @@ export class OrderMysqlRepository implements IOrderRepository {
       const storeId = (orderRows as any)[0].store_id;
 
       const [items] = await conn.query<RowDataPacket[]>(
-        'SELECT * FROM order_items WHERE order_id = ?',
+        'SELECT * FROM order_items WHERE order_id = ? ORDER BY product_id',
         [orderId]
       );
 
@@ -333,7 +326,6 @@ export class OrderMysqlRepository implements IOrderRepository {
       }
 
       if (insufficient.length > 0) {
-        await conn.rollback();
         throw new ValidationError('Insufficient stock for approval', insufficient);
       }
 

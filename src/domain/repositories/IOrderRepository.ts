@@ -53,6 +53,5 @@ export interface IOrderRepository {
   deductStock(orderId: number): Promise<void>;
   getExportRows(storeId?: number, from?: string, to?: string): Promise<ExportRow[]>;
   setPaymentIntent(orderId: number, paymentIntentId: string): Promise<void>;
-  markPaid(orderId: number): Promise<void>;
   updatePaymentStatus(orderId: number, status: IOrder['payment_status']): Promise<void>;
 }
