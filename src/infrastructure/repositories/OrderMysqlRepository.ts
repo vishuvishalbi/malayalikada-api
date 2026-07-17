@@ -343,6 +343,9 @@ export class OrderMysqlRepository implements IOrderRepository {
         );
       }
 
+      // Stock is now real, not held — clear reserved_at so these items are
+      // inert to expireStaleReservations regardless of the order's status.
+      await conn.query('UPDATE order_items SET reserved_at = NULL WHERE order_id = ?', [orderId]);
       await conn.query('UPDATE orders SET stock_deducted_at = NOW() WHERE id = ?', [orderId]);
 
       await conn.commit();

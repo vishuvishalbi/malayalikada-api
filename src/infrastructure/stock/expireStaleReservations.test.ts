@@ -39,4 +39,13 @@ describe('expireStaleReservations', () => {
       [900]
     );
   });
+
+  it('only selects order_items from pending_approval, unpaid orders', async () => {
+    const conn = makeConn([[], []]);
+    await expireStaleReservations(conn, 42, 7);
+    expect(conn.query).toHaveBeenCalledWith(
+      expect.stringMatching(/status = 'pending_approval' AND o\.payment_status = 'unpaid'/),
+      [42, 7]
+    );
+  });
 });
