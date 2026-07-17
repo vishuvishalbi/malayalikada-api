@@ -51,6 +51,83 @@ export class OrderMysqlRepository implements IOrderRepository {
     }
   }
 
+  async createWithReservation(
+    order: Omit<IOrder, 'id' | 'created_at' | 'updated_at'>,
+    items: Omit<IOrderItem, 'id' | 'order_id' | 'reserved_at'>[],
+    customerId: number
+  ): Promise<IOrder> {
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const today = new Date();
+      const [seqRows] = await conn.query<RowDataPacket[]>(
+        'SELECT COUNT(*) as cnt FROM orders WHERE DATE(created_at) = CURDATE()'
+      );
+      const seq = (seqRows[0] as any).cnt + 1;
+      const referenceNo = generateReferenceNumber(today, seq);
+
+      const [result] = await conn.query<ResultSetHeader>(
+        `INSERT INTO orders (reference_no, customer_id, store_id, status, total_nzd, delivery_fee_nzd, total_weight_kg, stripe_payment_intent_id, payment_status, rejection_reason, actioned_by, actioned_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [referenceNo, order.customer_id, order.store_id, order.status, order.total_nzd,
+         order.delivery_fee_nzd ?? 0, order.total_weight_kg ?? 0,
+         order.stripe_payment_intent_id ?? null, order.payment_status,
+         order.rejection_reason ?? null, order.actioned_by ?? null, order.actioned_at ?? null]
+      );
+      const orderId = result.insertId;
+
+      for (const item of items) {
+        await conn.query(
+          'INSERT INTO order_items (order_id, product_id, quantity, unit_price_nzd, reserved_at) VALUES (?, ?, ?, ?, NOW())',
+          [orderId, item.product_id, item.quantity, item.unit_price_nzd]
+        );
+      }
+
+      // NOTE: product_stock.reserved_quantity is intentionally left untouched here.
+      // The hold was already placed at cart-reservation time; this only moves
+      // ownership of that same hold from cart_items to order_items.
+      await conn.query('DELETE FROM cart_items WHERE cart_id = ?', [customerId]);
+      await conn.query('DELETE FROM carts WHERE customer_id = ?', [customerId]);
+
+      await conn.commit();
+      const created = await this.findById(orderId);
+      return created!;
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  async releaseReservation(orderId: number): Promise<void> {
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [orderRows] = await conn.query<RowDataPacket[]>('SELECT store_id FROM orders WHERE id = ?', [orderId]);
+      const storeId = (orderRows as any[])[0]?.store_id;
+      if (!storeId) { await conn.commit(); return; }
+
+      const [items] = await conn.query<RowDataPacket[]>('SELECT * FROM order_items WHERE order_id = ? ORDER BY product_id', [orderId]);
+      for (const item of items as any[]) {
+        await conn.query('SELECT * FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE', [item.product_id, storeId]);
+        await conn.query(
+          'UPDATE product_stock SET reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',
+          [item.quantity, item.product_id, storeId]
+        );
+      }
+
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
   async setPaymentIntent(orderId: number, paymentIntentId: string): Promise<void> {
     await db.query(
       'UPDATE orders SET stripe_payment_intent_id = ?, updated_at = NOW() WHERE id = ?',
@@ -58,11 +135,8 @@ export class OrderMysqlRepository implements IOrderRepository {
     );
   }
 
-  async markPaid(orderId: number): Promise<void> {
-    await db.query(
-      "UPDATE orders SET payment_status = 'paid', updated_at = NOW() WHERE id = ?",
-      [orderId]
-    );
+  async updatePaymentStatus(orderId: number, status: IOrder['payment_status']): Promise<void> {
+    await db.query('UPDATE orders SET payment_status = ?, updated_at = NOW() WHERE id = ?', [status, orderId]);
   }
 
   async findByCustomer(customerId: number, offset: number, limit: number): Promise<{ orders: IOrder[]; total: number }> {
@@ -161,11 +235,11 @@ export class OrderMysqlRepository implements IOrderRepository {
 
     if (storeIds.length === 0) {
       // admin: all stores
-      whereClause = "WHERE o.status IN ('approved', 'rejected')";
+      whereClause = "WHERE o.status IN ('approved', 'rejected', 'expired')";
       params = [];
     } else {
       const placeholders = storeIds.map(() => '?').join(',');
-      whereClause = `WHERE o.store_id IN (${placeholders}) AND o.status IN ('approved', 'rejected')`;
+      whereClause = `WHERE o.store_id IN (${placeholders}) AND o.status IN ('approved', 'rejected', 'expired')`;
       params = storeIds;
     }
 
@@ -235,7 +309,7 @@ export class OrderMysqlRepository implements IOrderRepository {
       const storeId = (orderRows as any)[0].store_id;
 
       const [items] = await conn.query<RowDataPacket[]>(
-        'SELECT * FROM order_items WHERE order_id = ?',
+        'SELECT * FROM order_items WHERE order_id = ? ORDER BY product_id',
         [orderId]
       );
 
@@ -252,7 +326,6 @@ export class OrderMysqlRepository implements IOrderRepository {
       }
 
       if (insufficient.length > 0) {
-        await conn.rollback();
         throw new ValidationError('Insufficient stock for approval', insufficient);
       }
 

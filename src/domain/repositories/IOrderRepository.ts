@@ -37,6 +37,12 @@ export interface ExportRow {
 
 export interface IOrderRepository {
   create(order: Omit<IOrder, 'id' | 'created_at' | 'updated_at'>, items: Omit<IOrderItem, 'id'>[]): Promise<IOrder>;
+  createWithReservation(
+    order: Omit<IOrder, 'id' | 'created_at' | 'updated_at'>,
+    items: Omit<IOrderItem, 'id' | 'order_id' | 'reserved_at'>[],
+    customerId: number
+  ): Promise<IOrder>;
+  releaseReservation(orderId: number): Promise<void>;
   findByCustomer(customerId: number, offset: number, limit: number): Promise<{ orders: IOrder[]; total: number }>;
   findById(id: number): Promise<(IOrder & { orderItems: (IOrderItem & { name: string })[] }) | null>;
   findAdminDetail(id: number): Promise<AdminOrderDetail | null>;
@@ -47,5 +53,5 @@ export interface IOrderRepository {
   deductStock(orderId: number): Promise<void>;
   getExportRows(storeId?: number, from?: string, to?: string): Promise<ExportRow[]>;
   setPaymentIntent(orderId: number, paymentIntentId: string): Promise<void>;
-  markPaid(orderId: number): Promise<void>;
+  updatePaymentStatus(orderId: number, status: IOrder['payment_status']): Promise<void>;
 }

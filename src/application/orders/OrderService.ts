@@ -17,9 +17,10 @@ export class OrderService {
 
   async submit(customerId: number) {
     const cart = await this.carts.findByCustomer(customerId);
-    if (!cart || cart.items.length === 0) throw new ValidationError('Cart is empty');
+    const items = cart ? await this.carts.findItems(customerId) : [];
+    if (!cart || items.length === 0) throw new ValidationError('Cart is empty');
 
-    const productIds = cart.items.map(i => i.product_id);
+    const productIds = items.map(i => i.product_id);
     const [priceRows] = await db.query<RowDataPacket[]>(
       `SELECT sp.product_id, sp.price_nzd, p.weight
        FROM store_pricing sp
@@ -36,19 +37,19 @@ export class OrderService {
     // product.weight is in kilograms per unit; item weight = product.weight * quantity;
     // products with null weight contribute 0 kg
     let total_weight_kg = 0;
-    const orderItems = cart.items.map(i => {
+    const orderItems = items.map(i => {
       const info = priceMap.get(i.product_id);
       if (info === undefined) throw new ValidationError(`Product ${i.product_id} not available at selected store`);
       subtotal += info.price * i.quantity;
       total_weight_kg += info.weight_kg * i.quantity;
-      return { order_id: 0, product_id: i.product_id, quantity: i.quantity, unit_price_nzd: info.price };
+      return { product_id: i.product_id, quantity: i.quantity, unit_price_nzd: info.price };
     });
 
     total_weight_kg = Math.round(total_weight_kg * 1000) / 1000;
     const delivery_fee_nzd = await this.delivery.feeForWeight(total_weight_kg);
     const total_nzd = Math.round((subtotal + delivery_fee_nzd) * 100) / 100;
 
-    const order = await this.orders.create(
+    const order = await this.orders.createWithReservation(
       {
         reference_no: '',
         customer_id: customerId,
@@ -63,13 +64,13 @@ export class OrderService {
         actioned_by: null,
         actioned_at: null,
       },
-      orderItems
+      orderItems,
+      customerId
     );
 
     const { clientSecret, paymentIntentId } = await this.payments.createIntent(order.id, total_nzd);
     await this.orders.setPaymentIntent(order.id, paymentIntentId);
 
-    await this.carts.clear(customerId);
     return { ...order, stripe_payment_intent_id: paymentIntentId, client_secret: clientSecret };
   }
 
@@ -122,6 +123,7 @@ export class OrderService {
       throw new ForbiddenError();
     }
     if (order.status !== 'pending_approval') throw new ValidationError('Order is not pending approval');
+    await this.orders.releaseReservation(orderId);
     await this.orders.updateStatus(orderId, 'rejected', staffId, reason);
     return this.orders.findById(orderId);
   }

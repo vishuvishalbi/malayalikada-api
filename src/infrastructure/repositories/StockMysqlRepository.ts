@@ -1,9 +1,30 @@
 import { RowDataPacket } from 'mysql2/promise';
 import { db } from '../database/connection';
 import { IProductStock } from '../../domain/entities/Product';
+import { expireStaleReservations } from '../stock/expireStaleReservations';
 
 export class StockMysqlRepository {
   async findAll(filters: { store_id?: number; product_id?: number; low_stock?: boolean }): Promise<IProductStock[]> {
+    if (filters.store_id && filters.product_id) {
+      const conn = await db.getConnection();
+      try {
+        await conn.beginTransaction();
+        await conn.query('SELECT * FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE', [filters.product_id, filters.store_id]);
+        await expireStaleReservations(conn, filters.product_id, filters.store_id);
+        await conn.commit();
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      } finally {
+        conn.release();
+      }
+    }
+    // NOTE: broad listings (no product_id+store_id pair) intentionally skip
+    // inline expiry — looping FOR UPDATE locks over an unbounded result set
+    // here would be a self-inflicted contention problem. Reserved_quantity
+    // shown in that case may lag by up to 15 minutes until the row is next
+    // touched via cart/order activity or a scoped single-product query.
+
     const conditions: string[] = [];
     const params: unknown[] = [];
 
