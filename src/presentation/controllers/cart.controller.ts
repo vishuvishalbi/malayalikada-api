@@ -28,7 +28,7 @@ export class CartController {
   removeItem = async (request: FastifyRequest, reply: FastifyReply) => {
     const { productId } = request.params as { productId: string };
     await this.service.removeItem(request.user.sub, Number(productId));
-    reply.status(204).send();
+    reply.send(await this.service.get(request.user.sub));
   };
 
   clear = async (request: FastifyRequest, reply: FastifyReply) => {
