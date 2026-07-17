@@ -12,6 +12,7 @@ export interface IOrder {
   rejection_reason: string | null;
   actioned_by: number | null;
   actioned_at: Date | null;
+  stock_deducted_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }

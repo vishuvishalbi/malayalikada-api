@@ -19,6 +19,7 @@ function makeOrders(order: any) {
   return {
     findById: vi.fn().mockResolvedValue(order),
     updatePaymentStatus: vi.fn(),
+    deductStock: vi.fn().mockResolvedValue(undefined),
   } as any;
 }
 function makeTransactions(existing: any = null) {
@@ -50,6 +51,36 @@ describe('PaymentService.confirmPayment', () => {
     const result = await service.confirmPayment(1, 1);
     expect(transactions.create).toHaveBeenCalledWith(expect.objectContaining({ order_id: 1, payment_channel: 'stripe', payment_method: 'card', status: 'succeeded' }));
     expect(orders.updatePaymentStatus).toHaveBeenCalledWith(1, 'paid');
+    expect(result.payment_status).toBe('paid');
+  });
+
+  it('deducts real stock immediately once the order is fully paid', async () => {
+    const stripe = makeStripe();
+    const order = { id: 1, customer_id: 1, status: 'pending_approval', payment_status: 'unpaid', stripe_payment_intent_id: 'pi_1', total_nzd: 20 };
+    const orders = makeOrders(order);
+    const service = new PaymentService(orders, makeTransactions(), makeAttempts(), stripe as any);
+    await service.confirmPayment(1, 1);
+    expect(orders.deductStock).toHaveBeenCalledWith(1);
+  });
+
+  it('does not deduct stock when only partially paid', async () => {
+    const stripe = makeStripe();
+    const order = { id: 1, customer_id: 1, status: 'pending_approval', payment_status: 'unpaid', stripe_payment_intent_id: 'pi_1', total_nzd: 100 };
+    const orders = makeOrders(order);
+    const transactions = makeTransactions();
+    transactions.sumSucceededByOrder = vi.fn().mockResolvedValue(70);
+    const service = new PaymentService(orders, transactions, makeAttempts(), stripe as any);
+    await service.confirmPayment(1, 1);
+    expect(orders.deductStock).not.toHaveBeenCalled();
+  });
+
+  it('does not fail confirmPayment when deductStock throws (customer already charged)', async () => {
+    const stripe = makeStripe();
+    const order = { id: 1, customer_id: 1, status: 'pending_approval', payment_status: 'unpaid', stripe_payment_intent_id: 'pi_1', total_nzd: 20 };
+    const orders = makeOrders(order);
+    orders.deductStock = vi.fn().mockRejectedValue(new Error('insufficient stock'));
+    const service = new PaymentService(orders, makeTransactions(), makeAttempts(), stripe as any);
+    const result = await service.confirmPayment(1, 1);
     expect(result.payment_status).toBe('paid');
   });
 

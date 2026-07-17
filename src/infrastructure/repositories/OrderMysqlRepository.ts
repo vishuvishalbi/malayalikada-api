@@ -304,9 +304,16 @@ export class OrderMysqlRepository implements IOrderRepository {
     try {
       await conn.beginTransaction();
 
-      const [orderRows] = await conn.query<RowDataPacket[]>('SELECT store_id FROM orders WHERE id = ?', [orderId]);
+      const [orderRows] = await conn.query<RowDataPacket[]>(
+        'SELECT store_id, stock_deducted_at FROM orders WHERE id = ? FOR UPDATE',
+        [orderId]
+      );
       if (!(orderRows as any)[0]) throw new Error('Order not found');
-      const storeId = (orderRows as any)[0].store_id;
+      const { store_id: storeId, stock_deducted_at } = (orderRows as any)[0];
+      if (stock_deducted_at) {
+        await conn.commit();
+        return;
+      }
 
       const [items] = await conn.query<RowDataPacket[]>(
         'SELECT * FROM order_items WHERE order_id = ? ORDER BY product_id',
@@ -335,6 +342,8 @@ export class OrderMysqlRepository implements IOrderRepository {
           [item.quantity, item.quantity, item.product_id, storeId]
         );
       }
+
+      await conn.query('UPDATE orders SET stock_deducted_at = NOW() WHERE id = ?', [orderId]);
 
       await conn.commit();
     } catch (e) {

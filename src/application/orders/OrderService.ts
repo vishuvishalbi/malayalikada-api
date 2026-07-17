@@ -63,6 +63,7 @@ export class OrderService {
         rejection_reason: null,
         actioned_by: null,
         actioned_at: null,
+        stock_deducted_at: null,
       },
       orderItems,
       customerId

@@ -62,6 +62,24 @@ export class PaymentService {
     const paidSoFar = await this.transactions.sumSucceededByOrder(order.id);
     const newStatus = paidSoFar >= order.total_nzd ? 'paid' : paidSoFar > 0 ? 'partially_paid' : 'unpaid';
     await this.orders.updatePaymentStatus(order.id, newStatus);
+    // Online (Stripe) orders deduct real stock as soon as payment clears,
+    // rather than waiting for staff approval — closes the window where a
+    // paid online order and an in-person sale could both draw the same
+    // physical unit before approval. deductStock is idempotent, so a later
+    // approval won't double-deduct. Non-Stripe channels keep deducting at
+    // approval (see OrderService.approve).
+    //
+    // The customer has already been charged at this point, so a stock
+    // shortfall (e.g. sold in-store in the same window) must never fail
+    // this response — it surfaces instead as a still-undeducted paid order
+    // for staff to resolve manually at approval.
+    if (newStatus === 'paid') {
+      try {
+        await this.orders.deductStock(order.id);
+      } catch (err) {
+        console.error(`deductStock failed for paid order ${order.id}:`, err);
+      }
+    }
     return { payment_status: newStatus };
   }
 }
