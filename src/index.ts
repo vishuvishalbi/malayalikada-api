@@ -6,6 +6,7 @@ import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import staticFiles from '@fastify/static';
+import helmet from '@fastify/helmet';
 import path from 'path';
 import { config } from './shared/config';
 import { AppError } from './shared/errors/AppError';
@@ -36,6 +37,9 @@ const app = Fastify({
 });
 
 app.register(swaggerPlugin);
+// Security headers. contentSecurityPolicy is disabled because Swagger UI at
+// /docs needs inline scripts/styles; the API itself serves JSON, not HTML.
+app.register(helmet, { contentSecurityPolicy: false });
 app.register(cors, { origin: config.corsOrigin });
 // 30-day sessions (req F1-8) — every sign (login/register/me/refresh) inherits this.
 app.register(jwt, {
