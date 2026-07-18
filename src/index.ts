@@ -106,6 +106,9 @@ app.get('/health', async () => ({ status: 'ok' }));
 const start = async () => {
   try {
     await app.listen({ port: config.port, host: '0.0.0.0' });
+    if (!config.stripeSecretKey) {
+      app.log.warn('STRIPE STUB MODE: STRIPE_SECRET_KEY is unset — payments are FAKED. Do not use in production.');
+    }
   } catch (err) {
     app.log.error(err);
     process.exit(1);
