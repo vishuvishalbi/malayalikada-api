@@ -19,10 +19,17 @@ export class NotifyRequestMysqlRepository implements INotifyRequestRepository {
   }
 
   async findAll(storeId?: number): Promise<INotifyRequest[]> {
-    const where = storeId ? 'WHERE store_id = ?' : '';
+    const where = storeId ? 'WHERE nr.store_id = ?' : '';
     const params = storeId ? [storeId] : [];
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT * FROM notify_requests ${where} ORDER BY created_at DESC`,
+      `SELECT nr.*, p.name AS product_name, s.name AS store_name,
+              CONCAT(c.first_name, ' ', c.last_name) AS customer_name
+       FROM notify_requests nr
+       JOIN products p ON p.id = nr.product_id
+       JOIN stores s ON s.id = nr.store_id
+       JOIN customers c ON c.id = nr.customer_id
+       ${where}
+       ORDER BY nr.created_at DESC`,
       params
     );
     return rows as INotifyRequest[];

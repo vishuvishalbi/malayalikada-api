@@ -1,6 +1,2 @@
-import { z } from 'zod';
+// This file is no longer used; payment.createIntent is internal-only
 
-export const createIntentSchema = z.object({
-  order_id: z.number().int().positive(),
-  amount_nzd: z.number().positive(),
-});

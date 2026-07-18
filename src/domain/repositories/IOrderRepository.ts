@@ -51,6 +51,7 @@ export interface IOrderRepository {
   findAllAdmin(filters: OrderListFilters): Promise<{ orders: OrderRow[]; total: number }>;
   updateStatus(id: number, status: IOrder['status'], actionedBy: number, rejectionReason?: string): Promise<void>;
   deductStock(orderId: number): Promise<void>;
+  approveWithStock(orderId: number, actionedBy: number): Promise<void>;
   getExportRows(storeId?: number, from?: string, to?: string): Promise<ExportRow[]>;
   setPaymentIntent(orderId: number, paymentIntentId: string): Promise<void>;
   updatePaymentStatus(orderId: number, status: IOrder['payment_status']): Promise<void>;

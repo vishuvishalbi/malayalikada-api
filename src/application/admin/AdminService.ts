@@ -3,6 +3,7 @@ import { ICustomerRepository } from '../../domain/repositories/ICustomerReposito
 import { db } from '../../infrastructure/database/connection';
 import { RowDataPacket } from 'mysql2/promise';
 import { paginate } from '../../shared/utils';
+import { NotFoundError } from '../../shared/errors/AppError';
 import bcrypt from 'bcrypt';
 
 export class AdminService {
@@ -82,11 +83,77 @@ export class AdminService {
 
   async getCustomer(id: number) {
     const customer = await this.customers.findById(id);
-    if (!customer) throw new Error('Customer not found');
+    if (!customer) throw new NotFoundError('Customer not found');
     const [orderRows] = await db.query<RowDataPacket[]>(
       'SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20',
       [id]
     );
     return { ...customer, orders: orderRows };
+  }
+
+  async analytics(filters: { from?: string; to?: string; storeId?: number }) {
+    // Default to the last 30 days ending today (dates are 'YYYY-MM-DD').
+    const to = filters.to ?? new Date().toISOString().slice(0, 10);
+    const fromDefault = new Date(`${to}T00:00:00Z`);
+    fromDefault.setUTCDate(fromDefault.getUTCDate() - 29);
+    const from = filters.from ?? fromDefault.toISOString().slice(0, 10);
+
+    // Approved orders only. created_at is a datetime; compare on DATE().
+    const storeClause = filters.storeId ? 'AND o.store_id = ?' : '';
+    const storeParam = filters.storeId ? [filters.storeId] : [];
+
+    const [totalsRows] = await db.query<RowDataPacket[]>(
+      `SELECT COALESCE(SUM(o.total_nzd), 0) AS totalRevenueNzd, COUNT(*) AS orderCount
+         FROM orders o
+        WHERE o.status = 'approved' AND DATE(o.created_at) BETWEEN ? AND ? ${storeClause}`,
+      [from, to, ...storeParam]
+    );
+    const totalRevenueNzd = Number((totalsRows[0] as any).totalRevenueNzd) || 0;
+    const orderCount = Number((totalsRows[0] as any).orderCount) || 0;
+
+    const [dailyRows] = await db.query<RowDataPacket[]>(
+      `SELECT DATE(o.created_at) AS date,
+              COALESCE(SUM(o.total_nzd), 0) AS revenueNzd,
+              COUNT(*) AS orderCount
+         FROM orders o
+        WHERE o.status = 'approved' AND DATE(o.created_at) BETWEEN ? AND ? ${storeClause}
+        GROUP BY DATE(o.created_at)
+        ORDER BY DATE(o.created_at) ASC`,
+      [from, to, ...storeParam]
+    );
+
+    const [topRows] = await db.query<RowDataPacket[]>(
+      `SELECT p.id AS productId, p.name AS name,
+              SUM(oi.quantity) AS unitsSold,
+              SUM(oi.quantity * oi.unit_price_nzd) AS revenueNzd
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+         JOIN products p ON p.id = oi.product_id
+        WHERE o.status = 'approved' AND DATE(o.created_at) BETWEEN ? AND ? ${storeClause}
+        GROUP BY p.id, p.name
+        ORDER BY revenueNzd DESC
+        LIMIT 10`,
+      [from, to, ...storeParam]
+    );
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    return {
+      from,
+      to,
+      totalRevenueNzd: round2(totalRevenueNzd),
+      orderCount,
+      avgOrderValueNzd: orderCount > 0 ? round2(totalRevenueNzd / orderCount) : 0,
+      daily: (dailyRows as any[]).map(r => ({
+        date: r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10),
+        revenueNzd: round2(Number(r.revenueNzd) || 0),
+        orderCount: Number(r.orderCount) || 0,
+      })),
+      topProducts: (topRows as any[]).map(r => ({
+        productId: Number(r.productId),
+        name: String(r.name),
+        unitsSold: Number(r.unitsSold) || 0,
+        revenueNzd: round2(Number(r.revenueNzd) || 0),
+      })),
+    };
   }
 }

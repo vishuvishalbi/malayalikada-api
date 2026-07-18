@@ -6,6 +6,7 @@ import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import staticFiles from '@fastify/static';
+import helmet from '@fastify/helmet';
 import path from 'path';
 import { config } from './shared/config';
 import { AppError } from './shared/errors/AppError';
@@ -35,7 +36,10 @@ const app = Fastify({
   logger: { level: process.env.LOG_LEVEL || 'info', stream: streams },
 });
 
-app.register(swaggerPlugin);
+if (config.enableDocs) app.register(swaggerPlugin);
+// Security headers. contentSecurityPolicy is disabled because Swagger UI at
+// /docs needs inline scripts/styles; the API itself serves JSON, not HTML.
+app.register(helmet, { contentSecurityPolicy: false });
 app.register(cors, { origin: config.corsOrigin });
 // 30-day sessions (req F1-8) — every sign (login/register/me/refresh) inherits this.
 app.register(jwt, {
@@ -102,6 +106,9 @@ app.get('/health', async () => ({ status: 'ok' }));
 const start = async () => {
   try {
     await app.listen({ port: config.port, host: '0.0.0.0' });
+    if (!config.stripeSecretKey) {
+      app.log.warn('STRIPE STUB MODE: STRIPE_SECRET_KEY is unset — payments are FAKED. Do not use in production.');
+    }
   } catch (err) {
     app.log.error(err);
     process.exit(1);

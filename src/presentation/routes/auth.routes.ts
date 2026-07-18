@@ -17,10 +17,12 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.get('/auth/captcha', {
     schema: { tags: ['Auth'] },
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
   }, controller.getCaptcha);
 
   app.post('/auth/register', {
     schema: { body: toSchema(registerSchema), tags: ['Auth'] },
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
   }, controller.register);
 
   app.post('/auth/login', {

@@ -182,6 +182,7 @@ export class AuthService {
     }
     const staffUser = await this.staff.findById(userId);
     if (!staffUser) throw new NotFoundError('User not found');
+    if (!staffUser.is_active) throw new UnauthorizedError('Account deactivated');
     const storeIds = staffUser.role === 'worker' ? await this.staff.getStoreIds(staffUser.id) : [];
     const token = signFn({ sub: staffUser.id, role: staffUser.role, storeIds });
     return {

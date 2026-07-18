@@ -3,6 +3,7 @@ import { IOrderRepository } from '../../domain/repositories/IOrderRepository';
 import { ICartRepository } from '../../domain/repositories/ICartRepository';
 import { NotFoundError, ValidationError, ForbiddenError } from '../../shared/errors/AppError';
 import { paginate } from '../../shared/utils';
+import { csvCell } from '../../shared/csv';
 import { db } from '../../infrastructure/database/connection';
 import { DeliveryService } from '../delivery/DeliveryService';
 import { PaymentService } from '../payments/PaymentService';
@@ -112,8 +113,7 @@ export class OrderService {
       throw new ForbiddenError();
     }
     if (order.status !== 'pending_approval') throw new ValidationError('Order is not pending approval');
-    await this.orders.deductStock(orderId);
-    await this.orders.updateStatus(orderId, 'approved', staffId);
+    await this.orders.approveWithStock(orderId, staffId);
     return this.orders.findById(orderId);
   }
 
@@ -147,16 +147,16 @@ export class OrderService {
     const header = 'reference_no,created_at,customer_name,customer_identifier,store_name,status,payment_status,item_count,total_nzd,delivery_fee_nzd\n';
     const lines = rows.map(o =>
       [
-        o.reference_no,
-        o.created_at instanceof Date ? o.created_at.toISOString() : o.created_at,
-        `"${String(o.customer_name).replace(/"/g, '""')}"`,
-        o.customer_identifier,
-        `"${String(o.store_name).replace(/"/g, '""')}"`,
-        o.status,
-        o.payment_status,
-        o.item_count,
-        o.total_nzd,
-        o.delivery_fee_nzd,
+        csvCell(o.reference_no),
+        csvCell(o.created_at instanceof Date ? o.created_at.toISOString() : o.created_at),
+        csvCell(o.customer_name),
+        csvCell(o.customer_identifier),
+        csvCell(o.store_name),
+        csvCell(o.status),
+        csvCell(o.payment_status),
+        csvCell(o.item_count),
+        csvCell(o.total_nzd),
+        csvCell(o.delivery_fee_nzd),
       ].join(',')
     ).join('\n');
     return header + lines;
