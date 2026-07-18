@@ -41,12 +41,12 @@ export class AuthController {
   };
 
   refresh = async (request: FastifyRequest, reply: FastifyReply) => {
-    const token = request.server.jwt.sign({
-      sub: request.user.sub,
-      role: request.user.role,
-      storeIds: request.user.storeIds,
-    });
-    reply.send({ token });
+    const result = await this.service.me(
+      request.user.sub,
+      request.user.role,
+      (payload) => (request.server.jwt.sign as (p: object) => string)(payload),
+    );
+    reply.send({ token: result.token, user: result.user });
   };
 
   setPreferredStore = async (request: FastifyRequest, reply: FastifyReply) => {
