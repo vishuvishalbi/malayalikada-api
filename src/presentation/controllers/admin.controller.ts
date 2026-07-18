@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { AdminService } from '../../application/admin/AdminService';
-import { createStaffSchema, updateStaffSchema, customerListQuerySchema, staffListQuerySchema } from '../schemas/admin.schema';
+import { createStaffSchema, updateStaffSchema, customerListQuerySchema, staffListQuerySchema, analyticsQuerySchema } from '../schemas/admin.schema';
 import { ValidationError } from '../../shared/errors/AppError';
 
 export class AdminController {
@@ -38,5 +38,15 @@ export class AdminController {
   getCustomer = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };
     reply.send(await this.service.getCustomer(Number(id)));
+  };
+
+  analytics = async (request: FastifyRequest, reply: FastifyReply) => {
+    const parsed = analyticsQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw new ValidationError('Invalid query', parsed.error.flatten());
+    reply.send(await this.service.analytics({
+      from: parsed.data.from,
+      to: parsed.data.to,
+      storeId: parsed.data.store_id,
+    }));
   };
 }

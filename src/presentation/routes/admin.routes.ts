@@ -16,6 +16,7 @@ export async function adminRoutes(app: FastifyInstance) {
   const adminOnly = [authenticate, requireRole('admin')];
 
   app.get('/admin/dashboard', { preHandler: adminOnly }, ctrl.dashboard);
+  app.get('/admin/analytics', { preHandler: adminOnly }, ctrl.analytics);
   app.get('/admin/staff', { preHandler: adminOnly }, ctrl.listStaff);
   app.post('/admin/staff', { preHandler: adminOnly }, ctrl.createStaff);
   app.put('/admin/staff/:id', { preHandler: adminOnly }, ctrl.updateStaff);
