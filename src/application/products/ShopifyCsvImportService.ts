@@ -4,6 +4,7 @@ import { parseShopifyCsv } from '../../infrastructure/csv/ShopifyCsvParser';
 import { parseShopifyInventoryCsv } from '../../infrastructure/csv/ShopifyInventoryCsvParser';
 import { CsvImportLogRepository } from '../../infrastructure/repositories/CsvImportLogRepository';
 import { LocalFileStorage } from '../../infrastructure/storage/LocalFileStorage';
+import { csvCell } from '../../shared/csv';
 import { ICsvImportLog } from '../../domain/entities/CsvImportLog';
 
 export class ShopifyCsvImportService {
@@ -117,7 +118,7 @@ export class ShopifyCsvImportService {
     if (rowErrors.length > 0) {
       const csvContent =
         'line,error\n' +
-        rowErrors.map((e) => `${e.line},"${e.error.replace(/"/g, '""')}"`).join('\n');
+        rowErrors.map((e) => `${e.line},${csvCell(e.error)}`).join('\n');
       errorReportFilename = `shopify-import-errors-${Date.now()}.csv`;
       await this.storage.save(errorReportFilename, Buffer.from(csvContent));
     }

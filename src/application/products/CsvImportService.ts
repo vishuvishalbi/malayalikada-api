@@ -1,6 +1,7 @@
 import { CsvParser } from '../../infrastructure/csv/CsvParser';
 import { CsvImportLogRepository } from '../../infrastructure/repositories/CsvImportLogRepository';
 import { LocalFileStorage } from '../../infrastructure/storage/LocalFileStorage';
+import { csvCell } from '../../shared/csv';
 import { db } from '../../infrastructure/database/connection';
 import { RowDataPacket } from 'mysql2/promise';
 
@@ -47,7 +48,7 @@ export class CsvImportService {
     let errorReportFilename: string | null = null;
 
     if (rowErrors.length > 0) {
-      const csvContent = 'line,error\n' + rowErrors.map(e => `${e.line},"${e.error.replace(/"/g, '""')}"`).join('\n');
+      const csvContent = 'line,error\n' + rowErrors.map(e => `${e.line},${csvCell(e.error)}`).join('\n');
       errorReportFilename = `import-errors-${Date.now()}.csv`;
       await this.storage.save(errorReportFilename, Buffer.from(csvContent));
     }
