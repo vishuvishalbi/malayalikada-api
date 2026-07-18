@@ -4,6 +4,15 @@ function required(key: string): string {
   return val;
 }
 
+const isProd = process.env.NODE_ENV === 'production';
+
+function corsOrigin(): string {
+  const val = process.env.CORS_ORIGIN;
+  if (val) return val;
+  if (isProd) throw new Error('Missing required env var in production: CORS_ORIGIN');
+  return '*';
+}
+
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   db: {
@@ -16,6 +25,7 @@ export const config = {
   jwtSecret: required('JWT_SECRET'),
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
-  corsOrigin: process.env.CORS_ORIGIN || '*',
+  corsOrigin: corsOrigin(),
+  enableDocs: process.env.ENABLE_DOCS === 'true' || !isProd,
   uploadsDir: process.env.UPLOADS_DIR || './uploads',
 } as const;

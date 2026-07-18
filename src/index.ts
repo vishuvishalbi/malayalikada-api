@@ -36,7 +36,7 @@ const app = Fastify({
   logger: { level: process.env.LOG_LEVEL || 'info', stream: streams },
 });
 
-app.register(swaggerPlugin);
+if (config.enableDocs) app.register(swaggerPlugin);
 // Security headers. contentSecurityPolicy is disabled because Swagger UI at
 // /docs needs inline scripts/styles; the API itself serves JSON, not HTML.
 app.register(helmet, { contentSecurityPolicy: false });
