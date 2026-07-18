@@ -13,6 +13,7 @@ function makeOrdersRepo(overrides: Partial<any> = {}) {
     findById: vi.fn().mockResolvedValue({ id: 55, status: 'pending_approval', store_id: 5 }),
     updateStatus: vi.fn(),
     deductStock: vi.fn(),
+    approveWithStock: vi.fn(),
     releaseReservation: vi.fn(),
     setPaymentIntent: vi.fn(),
     ...overrides,

@@ -371,6 +371,62 @@ export class OrderMysqlRepository implements IOrderRepository {
     }
   }
 
+  async approveWithStock(orderId: number, actionedBy: number): Promise<void> {
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [orderRows] = await conn.query<RowDataPacket[]>(
+        'SELECT store_id, stock_deducted_at FROM orders WHERE id = ? FOR UPDATE',
+        [orderId]
+      );
+      if (!(orderRows as any)[0]) throw new Error('Order not found');
+      const { store_id: storeId, stock_deducted_at } = (orderRows as any)[0];
+
+      if (!stock_deducted_at) {
+        const [items] = await conn.query<RowDataPacket[]>(
+          'SELECT * FROM order_items WHERE order_id = ? ORDER BY product_id',
+          [orderId]
+        );
+        const insufficient: Array<{ product_id: number; requested: number; available: number }> = [];
+        for (const item of items as any[]) {
+          const [stockRows] = await conn.query<RowDataPacket[]>(
+            'SELECT quantity FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE',
+            [item.product_id, storeId]
+          );
+          const available = (stockRows as any)[0]?.quantity ?? 0;
+          if (available < item.quantity) {
+            insufficient.push({ product_id: item.product_id, requested: item.quantity, available });
+          }
+        }
+        if (insufficient.length > 0) {
+          throw new ValidationError('Insufficient stock for approval', insufficient);
+        }
+        for (const item of items as any[]) {
+          await conn.query(
+            'UPDATE product_stock SET quantity = quantity - ?, reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',
+            [item.quantity, item.quantity, item.product_id, storeId]
+          );
+        }
+        await conn.query('UPDATE order_items SET reserved_at = NULL WHERE order_id = ?', [orderId]);
+        await conn.query('UPDATE orders SET stock_deducted_at = NOW() WHERE id = ?', [orderId]);
+      }
+
+      // Same transaction: flip status so stock + status can never diverge.
+      await conn.query(
+        "UPDATE orders SET status = 'approved', actioned_by = ?, actioned_at = NOW(), updated_at = NOW() WHERE id = ?",
+        [actionedBy, orderId]
+      );
+
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
   async getExportRows(storeId?: number, from?: string, to?: string): Promise<ExportRow[]> {
     const conditions: string[] = [];
     const params: unknown[] = [];

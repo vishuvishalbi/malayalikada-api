@@ -113,8 +113,7 @@ export class OrderService {
       throw new ForbiddenError();
     }
     if (order.status !== 'pending_approval') throw new ValidationError('Order is not pending approval');
-    await this.orders.deductStock(orderId);
-    await this.orders.updateStatus(orderId, 'approved', staffId);
+    await this.orders.approveWithStock(orderId, staffId);
     return this.orders.findById(orderId);
   }
 
