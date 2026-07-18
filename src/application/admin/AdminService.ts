@@ -3,6 +3,7 @@ import { ICustomerRepository } from '../../domain/repositories/ICustomerReposito
 import { db } from '../../infrastructure/database/connection';
 import { RowDataPacket } from 'mysql2/promise';
 import { paginate } from '../../shared/utils';
+import { NotFoundError } from '../../shared/errors/AppError';
 import bcrypt from 'bcrypt';
 
 export class AdminService {
@@ -82,7 +83,7 @@ export class AdminService {
 
   async getCustomer(id: number) {
     const customer = await this.customers.findById(id);
-    if (!customer) throw new Error('Customer not found');
+    if (!customer) throw new NotFoundError('Customer not found');
     const [orderRows] = await db.query<RowDataPacket[]>(
       'SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20',
       [id]
