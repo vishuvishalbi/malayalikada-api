@@ -30,7 +30,7 @@ export class CsvImportService {
         const lineNum = i + 2;
         try {
           const [existing] = await conn.query<RowDataPacket[]>(
-            'SELECT id FROM products WHERE barcode = ?', [row.barcode]
+            'SELECT id FROM products WHERE barcode = ? AND deleted_at IS NULL', [row.barcode]
           );
           const weight = row.weight ? parseFloat(row.weight) : null;
           const categoryId = parseInt(row.category_id);
@@ -38,7 +38,7 @@ export class CsvImportService {
 
           if ((existing as any[]).length > 0) {
             await conn.query(
-              'UPDATE products SET name=?, description=?, category_id=?, brand=?, unit=?, weight=?, supplier=?, updated_at=NOW() WHERE barcode=?',
+              'UPDATE products SET name=?, description=?, category_id=?, brand=?, unit=?, weight=?, supplier=?, updated_at=NOW() WHERE barcode=? AND deleted_at IS NULL',
               [row.name, row.description ?? null, categoryId, row.brand ?? null, row.unit ?? null, weight, row.supplier ?? null, row.barcode]
             );
           } else {
