@@ -17,10 +17,17 @@ export class OrderMysqlRepository implements IOrderRepository {
       await conn.beginTransaction();
 
       const today = new Date();
-      const [seqRows] = await conn.query<RowDataPacket[]>(
-        'SELECT COUNT(*) as cnt FROM orders WHERE DATE(created_at) = CURDATE()'
+      // Atomic per-day counter: the INSERT ... ON DUPLICATE KEY UPDATE bumps
+      // next_seq under the row lock held by this transaction, so concurrent
+      // submits get distinct sequence numbers (no COUNT(*) race).
+      await conn.query(
+        `INSERT INTO order_daily_sequences (seq_date, next_seq) VALUES (CURDATE(), 1)
+         ON DUPLICATE KEY UPDATE next_seq = next_seq + 1`
       );
-      const seq = (seqRows[0] as any).cnt + 1;
+      const [seqRows] = await conn.query<RowDataPacket[]>(
+        'SELECT next_seq FROM order_daily_sequences WHERE seq_date = CURDATE()'
+      );
+      const seq = (seqRows[0] as any).next_seq;
       const referenceNo = generateReferenceNumber(today, seq);
 
       const [result] = await conn.query<ResultSetHeader>(
@@ -61,10 +68,17 @@ export class OrderMysqlRepository implements IOrderRepository {
       await conn.beginTransaction();
 
       const today = new Date();
-      const [seqRows] = await conn.query<RowDataPacket[]>(
-        'SELECT COUNT(*) as cnt FROM orders WHERE DATE(created_at) = CURDATE()'
+      // Atomic per-day counter: the INSERT ... ON DUPLICATE KEY UPDATE bumps
+      // next_seq under the row lock held by this transaction, so concurrent
+      // submits get distinct sequence numbers (no COUNT(*) race).
+      await conn.query(
+        `INSERT INTO order_daily_sequences (seq_date, next_seq) VALUES (CURDATE(), 1)
+         ON DUPLICATE KEY UPDATE next_seq = next_seq + 1`
       );
-      const seq = (seqRows[0] as any).cnt + 1;
+      const [seqRows] = await conn.query<RowDataPacket[]>(
+        'SELECT next_seq FROM order_daily_sequences WHERE seq_date = CURDATE()'
+      );
+      const seq = (seqRows[0] as any).next_seq;
       const referenceNo = generateReferenceNumber(today, seq);
 
       const [result] = await conn.query<ResultSetHeader>(
