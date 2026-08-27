@@ -40,7 +40,12 @@ if (config.enableDocs) app.register(swaggerPlugin);
 // Security headers. contentSecurityPolicy is disabled because Swagger UI at
 // /docs needs inline scripts/styles; the API itself serves JSON, not HTML.
 app.register(helmet, { contentSecurityPolicy: false });
-app.register(cors, { origin: config.corsOrigin });
+app.register(cors, {
+  origin: config.corsOrigin,
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: config.corsOrigin !== '*',
+});
 // 30-day sessions (req F1-8) — every sign (login/register/me/refresh) inherits this.
 app.register(jwt, {
   secret: config.jwtSecret,
