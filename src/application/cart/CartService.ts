@@ -1,6 +1,6 @@
 import { RowDataPacket } from 'mysql2/promise';
 import { ICartRepository } from '../../domain/repositories/ICartRepository';
-import { ValidationError, NotFoundError } from '../../shared/errors/AppError';
+import { ValidationError } from '../../shared/errors/AppError';
 import { db } from '../../infrastructure/database/connection';
 import { DeliveryService } from '../delivery/DeliveryService';
 
@@ -71,9 +71,10 @@ export class CartService {
     return { storeId: cart.store_id, items: respItems, grandTotal, total_weight_kg, delivery_fee_nzd };
   }
 
-  async addItem(customerId: number, productId: number, quantity: number) {
-    if (quantity <= 0) throw new ValidationError('Quantity must be positive');
-
+  /// Resolves the store a cart mutation applies to: the existing cart's store,
+  /// else the customer's preferred store. Shared by add/set so a customer whose
+  /// cart row was cleared can still mutate without re-selecting a store.
+  private async resolveStoreId(customerId: number): Promise<number> {
     const cart = await this.repo.findByCustomer(customerId);
     let storeId = cart?.store_id;
     if (!storeId) {
@@ -84,6 +85,13 @@ export class CartService {
       storeId = (custRows as any[])[0]?.preferred_store_id;
     }
     if (!storeId) throw new ValidationError('No store selected. Set preferred store first.');
+    return storeId;
+  }
+
+  async addItem(customerId: number, productId: number, quantity: number) {
+    if (quantity <= 0) throw new ValidationError('Quantity must be positive');
+
+    const storeId = await this.resolveStoreId(customerId);
 
     const items = await this.repo.findItems(customerId);
     const existing = items.find(i => i.product_id === productId);
@@ -93,15 +101,13 @@ export class CartService {
   }
 
   async setItem(customerId: number, productId: number, quantity: number) {
-    const cart = await this.repo.findByCustomer(customerId);
-    if (!cart) throw new NotFoundError('Cart not found');
-
     if (quantity === 0) {
       await this.repo.releaseItem(customerId, productId);
       return;
     }
 
-    return this.repo.reserveItem(customerId, cart.store_id, productId, quantity);
+    const storeId = await this.resolveStoreId(customerId);
+    return this.repo.reserveItem(customerId, storeId, productId, quantity);
   }
 
   async removeItem(customerId: number, productId: number) {
