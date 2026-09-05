@@ -20,11 +20,24 @@ export class PaymentService {
   }
 
   async handleWebhook(rawBody: Buffer, signature: string) {
-    const { orderId } = await this.stripe.verifyWebhook(rawBody, signature);
-    if (!orderId) return;
+    const { orderId, outcome } = await this.stripe.verifyWebhook(rawBody, signature);
+    if (!orderId || outcome === 'ignored') return;
     const order = await this.orders.findById(orderId);
     if (!order || order.status === 'expired') return;
-    await this.recordSuccess(order, order.stripe_payment_intent_id!);
+
+    if (outcome === 'succeeded') {
+      await this.recordSuccess(order, order.stripe_payment_intent_id!);
+      return;
+    }
+    if (outcome === 'refunded') {
+      // Payment reversed after the fact (refund or dispute) — stock already
+      // deducted at approval/paid-time is left as-is for staff to reconcile
+      // manually; this only stops the order from reading as paid.
+      await this.orders.updatePaymentStatus(order.id, 'refunded');
+      return;
+    }
+    // outcome === 'failed': leave payment_status untouched — confirmPayment's
+    // own retry/attempt-logging path already records the failed attempt.
   }
 
   async confirmPayment(orderId: number, customerId: number): Promise<{ payment_status: string }> {

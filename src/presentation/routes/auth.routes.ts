@@ -47,6 +47,7 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post('/auth/admin/reset-password', {
     schema: { body: toSchema(resetPasswordSchema), security: [{ bearerAuth: [] }], tags: ['Auth'] },
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
     preHandler: [authenticate, requireRole('admin')],
   }, controller.adminResetPassword);
 
@@ -57,6 +58,7 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.put('/auth/password', {
     schema: { security: [{ bearerAuth: [] }], tags: ['Auth'] },
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
     preHandler: [authenticate, requireRole('customer', 'worker', 'admin')],
   }, controller.changePassword);
 }

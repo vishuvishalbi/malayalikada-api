@@ -1,6 +1,15 @@
 export class StripeClient {
   private stubMode = !process.env.STRIPE_SECRET_KEY;
 
+  constructor() {
+    if (this.stubMode && process.env.NODE_ENV === 'production') {
+      throw new Error('STRIPE_SECRET_KEY is required in production — refusing to start in payment stub mode.');
+    }
+    if (!this.stubMode && !process.env.STRIPE_WEBHOOK_SECRET) {
+      throw new Error('STRIPE_WEBHOOK_SECRET is required when STRIPE_SECRET_KEY is set — webhook signature verification cannot run without it.');
+    }
+  }
+
   async createPaymentIntent(orderId: number, amountNzd: number): Promise<{ clientSecret: string; paymentIntentId: string }> {
     if (this.stubMode) {
       return {
@@ -18,8 +27,8 @@ export class StripeClient {
     return { clientSecret: intent.client_secret, paymentIntentId: intent.id };
   }
 
-  async verifyWebhook(rawBody: Buffer, signature: string): Promise<{ orderId: number }> {
-    if (this.stubMode) return { orderId: 0 };
+  async verifyWebhook(rawBody: Buffer, signature: string): Promise<{ orderId: number; outcome: 'succeeded' | 'refunded' | 'failed' | 'ignored' }> {
+    if (this.stubMode) return { orderId: 0, outcome: 'ignored' };
     const Stripe = require('stripe');
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const event = stripe.webhooks.constructEvent(
@@ -27,9 +36,26 @@ export class StripeClient {
       signature,
       process.env.STRIPE_WEBHOOK_SECRET
     );
-    if (event.type !== 'payment_intent.succeeded') return { orderId: 0 };
-    const intent = event.data.object as any;
-    return { orderId: Number(intent.metadata.order_id) };
+    switch (event.type) {
+      case 'payment_intent.succeeded': {
+        const intent = event.data.object as any;
+        return { orderId: Number(intent.metadata.order_id), outcome: 'succeeded' };
+      }
+      case 'payment_intent.payment_failed': {
+        const intent = event.data.object as any;
+        return { orderId: Number(intent.metadata.order_id), outcome: 'failed' };
+      }
+      case 'charge.refunded':
+      case 'charge.dispute.created': {
+        const charge = event.data.object as any;
+        const intentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+        if (!intentId) return { orderId: 0, outcome: 'ignored' };
+        const intent = await stripe.paymentIntents.retrieve(intentId);
+        return { orderId: Number(intent.metadata.order_id), outcome: 'refunded' };
+      }
+      default:
+        return { orderId: 0, outcome: 'ignored' };
+    }
   }
 
   async retrievePaymentIntent(paymentIntentId: string): Promise<{ status: string }> {

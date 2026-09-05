@@ -6,5 +6,7 @@ export async function paymentRoutes(app: FastifyInstance) {
   const service = new PaymentService();
   const ctrl = new PaymentController(service);
 
-  app.post('/payments/webhook', ctrl.webhook);
+  app.post('/payments/webhook', {
+    config: { rateLimit: { max: 200, timeWindow: '1 minute' } },
+  }, ctrl.webhook);
 }
