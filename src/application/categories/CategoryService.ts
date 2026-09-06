@@ -28,7 +28,7 @@ export class CategoryService {
     return roots;
   }
 
-  async create(data: { name: string; icon?: string; parent_id?: number; sort_order?: number }) {
+  async create(data: { name: string; icon?: string; parent_id?: number | null; sort_order?: number }) {
     return this.repo.create({
       name: data.name,
       icon: data.icon ?? null,
@@ -38,7 +38,7 @@ export class CategoryService {
     });
   }
 
-  async update(id: number, data: Partial<{ name: string; icon: string; parent_id: number; sort_order: number }>) {
+  async update(id: number, data: Partial<{ name: string; icon: string; parent_id: number | null; sort_order: number }>) {
     const cat = await this.repo.update(id, data);
     if (!cat) throw new NotFoundError('Category not found');
     return cat;

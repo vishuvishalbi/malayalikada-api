@@ -1,13 +1,15 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { AdminService } from '../../application/admin/AdminService';
-import { createStaffSchema, updateStaffSchema, customerListQuerySchema, staffListQuerySchema, analyticsQuerySchema } from '../schemas/admin.schema';
+import { createStaffSchema, updateStaffSchema, customerListQuerySchema, staffListQuerySchema, analyticsQuerySchema, dashboardQuerySchema } from '../schemas/admin.schema';
 import { ValidationError } from '../../shared/errors/AppError';
 
 export class AdminController {
   constructor(private service: AdminService) {}
 
-  dashboard = async (_req: FastifyRequest, reply: FastifyReply) => {
-    reply.send(await this.service.dashboard());
+  dashboard = async (request: FastifyRequest, reply: FastifyReply) => {
+    const parsed = dashboardQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw new ValidationError('Invalid query', parsed.error.flatten());
+    reply.send(await this.service.dashboard(parsed.data.store_id));
   };
 
   listStaff = async (request: FastifyRequest, reply: FastifyReply) => {

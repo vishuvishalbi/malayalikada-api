@@ -12,26 +12,35 @@ export class AdminService {
     private customers: ICustomerRepository,
   ) {}
 
-  async dashboard() {
+  async dashboard(storeId?: number) {
+    const storeClause = storeId ? 'AND store_id = ?' : '';
+    const storeParam = storeId ? [storeId] : [];
+
     const [todayRows] = await db.query<RowDataPacket[]>(
-      "SELECT COUNT(*) as cnt FROM orders WHERE DATE(created_at) = CURDATE()"
+      `SELECT COUNT(*) as cnt FROM orders WHERE DATE(created_at) = CURDATE() ${storeClause}`,
+      storeParam
     );
     const [pendingRows] = await db.query<RowDataPacket[]>(
-      "SELECT COUNT(*) as cnt FROM orders WHERE status = 'pending_approval'"
+      `SELECT COUNT(*) as cnt FROM orders WHERE status = 'pending_approval' ${storeClause}`,
+      storeParam
     );
     const [completedRows] = await db.query<RowDataPacket[]>(
-      "SELECT COUNT(*) as cnt FROM orders WHERE status = 'approved'"
+      `SELECT COUNT(*) as cnt FROM orders WHERE status = 'approved' ${storeClause}`,
+      storeParam
     );
     const [revenueRows] = await db.query<RowDataPacket[]>(
       `SELECT s.id as storeId, s.name, COALESCE(SUM(o.total_nzd), 0) as revenueNzd
        FROM stores s
        LEFT JOIN orders o ON o.store_id = s.id AND o.status = 'approved'
-       WHERE s.is_active = 1
+       WHERE s.is_active = 1 ${storeId ? 'AND s.id = ?' : ''}
        GROUP BY s.id, s.name
-       ORDER BY s.name`
+       ORDER BY s.name`,
+      storeParam
     );
+    const stockStoreClause = storeId ? 'AND store_id = ?' : '';
     const [lowStockRows] = await db.query<RowDataPacket[]>(
-      "SELECT COUNT(*) as cnt FROM product_stock WHERE low_stock_threshold > 0 AND quantity <= low_stock_threshold"
+      `SELECT COUNT(*) as cnt FROM product_stock WHERE low_stock_threshold > 0 AND quantity <= low_stock_threshold ${stockStoreClause}`,
+      storeParam
     );
 
     return {
