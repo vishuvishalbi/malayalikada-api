@@ -95,6 +95,34 @@ export async function productRoutes(app: FastifyInstance) {
     reply.send(log);
   });
 
+  // EPOS Now CSV import
+  const { EposNowCsvImportService } = await import('../../application/products/EposNowCsvImportService');
+  const eposNowImportService = new EposNowCsvImportService();
+
+  app.post('/products/import/eposnow-categories-csv', {
+    preHandler: [authenticate, requireRole('admin')],
+  }, async (request, reply) => {
+    const file = await request.file();
+    if (!file) throw new ValidationError('No file uploaded');
+    const buffer = await file.toBuffer();
+    reply.send(await eposNowImportService.importCategories(buffer, file.filename, request.user.sub));
+  });
+
+  app.post('/products/import/eposnow-products-csv', {
+    preHandler: [authenticate, requireRole('admin')],
+  }, async (request, reply) => {
+    const { store_id } = request.query as { store_id?: string };
+    if (!store_id || isNaN(Number(store_id))) {
+      throw new ValidationError('store_id query param is required');
+    }
+    const file = await request.file();
+    if (!file) throw new ValidationError('No file uploaded');
+    const buffer = await file.toBuffer();
+    reply.send(
+      await eposNowImportService.importProducts(buffer, file.filename, Number(store_id), request.user.sub),
+    );
+  });
+
   // Reviews
   const { ProductReviewService } = await import('../../application/reviews/ProductReviewService');
   const { ProductReviewMysqlRepository } = await import('../../infrastructure/repositories/ProductReviewMysqlRepository');
