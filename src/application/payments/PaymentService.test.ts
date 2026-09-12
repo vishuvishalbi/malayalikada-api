@@ -20,6 +20,7 @@ function makeOrders(order: any) {
     findById: vi.fn().mockResolvedValue(order),
     updatePaymentStatus: vi.fn(),
     deductStock: vi.fn().mockResolvedValue(undefined),
+    clearHandedOffCart: vi.fn().mockResolvedValue(undefined),
   } as any;
 }
 function makeTransactions(existing: any = null) {

@@ -2,6 +2,7 @@ import { IProduct, IProductImage } from '../entities/Product';
 
 export interface ProductListFilters {
   category_id?: number;
+  brand_id?: number;
   search?: string;
   store_id?: number;
   featured?: boolean;

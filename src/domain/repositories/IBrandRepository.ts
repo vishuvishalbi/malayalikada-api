@@ -8,5 +8,6 @@ export interface IBrandRepository {
   findOrCreateByName(name: string): Promise<number>;
   create(data: { name: string }): Promise<IBrand>;
   update(id: number, data: Partial<{ name: string; logo_filename: string | null }>): Promise<IBrand | null>;
+  countProducts(id: number): Promise<number>;
   softDelete(id: number): Promise<void>;
 }

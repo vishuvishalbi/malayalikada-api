@@ -92,6 +92,7 @@ export class PaymentService {
       } catch (err) {
         console.error(`deductStock failed for paid order ${order.id}:`, err);
       }
+      await this.orders.clearHandedOffCart(order.id);
     }
     return { payment_status: newStatus };
   }

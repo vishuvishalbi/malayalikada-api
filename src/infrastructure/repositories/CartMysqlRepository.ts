@@ -1,4 +1,4 @@
-import { RowDataPacket } from 'mysql2/promise';
+import { RowDataPacket, PoolConnection } from 'mysql2/promise';
 import { db } from '../database/connection';
 import { ICart } from '../../domain/entities/Cart';
 import { ICartItem } from '../../domain/entities/CartItem';
@@ -26,8 +26,9 @@ export class CartMysqlRepository implements ICartRepository {
 
   /**
    * Reconciles the cart with stock: lapses stale holds, re-reserves any lapsed
-   * line (clamped to what is available; dropped only if nothing is left) and
-   * refreshes the hold on live lines so an active customer never loses them.
+   * line whose full quantity is available again, and refreshes the hold on
+   * live lines so an active customer never loses them. A line that cannot be
+   * re-reserved stays in the cart unreserved; checkout decides what to do.
    */
   async expireAndFindItems(customerId: number): Promise<ICartItem[]> {
     const current = await this.findItems(customerId);
@@ -44,21 +45,18 @@ export class CartMysqlRepository implements ICartRepository {
         const line = (lineRows as any[])[0];
         if (line?.reserved_at) {
           await conn.query('UPDATE cart_items SET reserved_at = NOW() WHERE id = ?', [item.id]);
-        } else if (line) {
+        } else if (line && !(await this.heldByPendingOrder(conn, customerId, item.product_id))) {
           const [freshRows] = await conn.query<RowDataPacket[]>(
             'SELECT quantity, reserved_quantity, max_reserve_qty FROM product_stock WHERE product_id = ? AND store_id = ?',
             [item.product_id, item.store_id]
           );
           const stock = (freshRows as any[])[0] ?? (stockRows as any[])[0];
           const available = stock ? Math.min(stock.quantity - stock.reserved_quantity, stock.max_reserve_qty) : 0;
-          const take = Math.min(line.quantity, available);
-          if (take <= 0) {
-            await conn.query('DELETE FROM cart_items WHERE id = ?', [item.id]);
-          } else {
-            await conn.query('UPDATE cart_items SET quantity = ?, reserved_at = NOW(), updated_at = NOW() WHERE id = ?', [take, item.id]);
+          if (available >= line.quantity) {
+            await conn.query('UPDATE cart_items SET reserved_at = NOW(), updated_at = NOW() WHERE id = ?', [item.id]);
             await conn.query(
               'UPDATE product_stock SET reserved_quantity = reserved_quantity + ? WHERE product_id = ? AND store_id = ?',
-              [take, item.product_id, item.store_id]
+              [line.quantity, item.product_id, item.store_id]
             );
           }
         }
@@ -71,6 +69,23 @@ export class CartMysqlRepository implements ICartRepository {
       }
     }
     return this.findItems(customerId);
+  }
+
+  /**
+   * True while a checkout the customer started (unpaid, pending) owns the
+   * hold for this product: the cart line must not re-reserve on top of it.
+   * The line is released back to the cart when that order expires, is
+   * rejected, or is superseded by a new checkout.
+   */
+  private async heldByPendingOrder(conn: PoolConnection, customerId: number, productId: number): Promise<boolean> {
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `SELECT 1 FROM order_items oi
+       JOIN orders o ON o.id = oi.order_id
+       WHERE o.customer_id = ? AND oi.product_id = ? AND o.status = 'pending_approval' AND o.payment_status = 'unpaid'
+       LIMIT 1`,
+      [customerId, productId]
+    );
+    return rows.length > 0;
   }
 
   async reserveItem(customerId: number, storeId: number, productId: number, quantity: number): Promise<ICartItem> {

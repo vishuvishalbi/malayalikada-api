@@ -100,9 +100,10 @@ export class OrderMysqlRepository implements IOrderRepository {
 
       // NOTE: product_stock.reserved_quantity is intentionally left untouched here.
       // The hold was already placed at cart-reservation time; this only moves
-      // ownership of that same hold from cart_items to order_items.
-      await conn.query('DELETE FROM cart_items WHERE cart_id = ?', [customerId]);
-      await conn.query('DELETE FROM carts WHERE customer_id = ?', [customerId]);
+      // ownership of that same hold from cart_items to order_items. The cart
+      // lines stay (unreserved) so an abandoned payment does not lose the cart;
+      // clearHandedOffCart removes them once the order is paid/approved.
+      await conn.query('UPDATE cart_items SET reserved_at = NULL, updated_at = NOW() WHERE cart_id = ?', [customerId]);
 
       await conn.commit();
       const created = await this.findById(orderId);
@@ -113,6 +114,34 @@ export class OrderMysqlRepository implements IOrderRepository {
     } finally {
       conn.release();
     }
+  }
+
+  async expireAbandonedUnpaid(customerId: number): Promise<void> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT o.id FROM orders o
+       WHERE o.customer_id = ? AND o.status = 'pending_approval' AND o.payment_status = 'unpaid'
+         AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.order_id = o.id AND t.status = 'succeeded')`,
+      [customerId]
+    );
+    for (const row of rows as any[]) {
+      await this.releaseReservation(row.id);
+      await db.query("UPDATE orders SET status = 'expired', updated_at = NOW() WHERE id = ? AND status = 'pending_approval'", [row.id]);
+    }
+  }
+
+  async clearHandedOffCart(orderId: number): Promise<void> {
+    const [rows] = await db.query<RowDataPacket[]>('SELECT customer_id FROM orders WHERE id = ?', [orderId]);
+    const customerId = (rows as any[])[0]?.customer_id;
+    if (!customerId) return;
+    // Only the unreserved lines (the ones handed to this order); anything the
+    // customer added since is still a live hold and stays in the cart.
+    await db.query(
+      `DELETE ci FROM cart_items ci
+       JOIN order_items oi ON oi.product_id = ci.product_id AND oi.order_id = ?
+       WHERE ci.cart_id = ? AND ci.reserved_at IS NULL`,
+      [orderId, customerId]
+    );
+    await db.query('DELETE FROM carts WHERE customer_id = ? AND NOT EXISTS (SELECT 1 FROM cart_items WHERE cart_id = ?)', [customerId, customerId]);
   }
 
   async releaseReservation(orderId: number): Promise<void> {

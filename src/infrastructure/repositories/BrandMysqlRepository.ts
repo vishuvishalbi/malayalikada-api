@@ -46,8 +46,14 @@ export class BrandMysqlRepository implements IBrandRepository {
     return this.findById(id);
   }
 
+  async countProducts(id: number): Promise<number> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      'SELECT COUNT(*) AS n FROM products WHERE brand_id = ? AND deleted_at IS NULL', [id]
+    );
+    return Number(rows[0].n);
+  }
+
   async softDelete(id: number): Promise<void> {
     await db.query('UPDATE brands SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?', [id]);
-    await db.query('UPDATE products SET brand_id = NULL, brand = NULL WHERE brand_id = ?', [id]);
   }
 }

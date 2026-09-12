@@ -18,12 +18,15 @@ export class OrderService {
 
   async submit(customerId: number) {
     const cart = await this.carts.findByCustomer(customerId);
+    // A new checkout supersedes any abandoned one: give its stock hold back
+    // first so the cart lines below can re-acquire it.
+    await this.orders.expireAbandonedUnpaid(customerId);
     const items = cart ? await this.carts.expireAndFindItems(customerId) : [];
     if (!cart || items.length === 0) throw new ValidationError('Cart is empty');
 
     const productIds = items.map(i => i.product_id);
     const [priceRows] = await db.query<RowDataPacket[]>(
-      `SELECT sp.product_id, sp.price_nzd, p.weight
+      `SELECT sp.product_id, sp.price_nzd, p.weight, p.name
        FROM store_pricing sp
        JOIN products p ON p.id = sp.product_id
        WHERE sp.store_id = ? AND sp.product_id IN (${productIds.map(() => '?').join(',')})`,
@@ -31,8 +34,14 @@ export class OrderService {
     );
     const priceMap = new Map((priceRows as any[]).map((r: any) => [
       r.product_id,
-      { price: Number(r.price_nzd), weight_kg: r.weight !== null ? Number(r.weight) : 0 },
+      { price: Number(r.price_nzd), weight_kg: r.weight !== null ? Number(r.weight) : 0, name: r.name as string },
     ]));
+
+    const unreserved = items.filter(i => !i.reserved_at);
+    if (unreserved.length > 0) {
+      const names = unreserved.map(i => priceMap.get(i.product_id)?.name ?? `#${i.product_id}`).join(', ');
+      throw new ValidationError(`Not enough stock for: ${names}. Adjust the quantity to continue.`);
+    }
 
     let subtotal = 0;
     // product.weight is in kilograms per unit; item weight = product.weight * quantity;
@@ -114,6 +123,7 @@ export class OrderService {
     }
     if (order.status !== 'pending_approval') throw new ValidationError('Order is not pending approval');
     await this.orders.approveWithStock(orderId, staffId);
+    await this.orders.clearHandedOffCart(orderId);
     return this.orders.findById(orderId);
   }
 

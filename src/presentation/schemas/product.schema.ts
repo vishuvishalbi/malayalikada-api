@@ -22,6 +22,7 @@ export const updateProductSchema = createProductSchema.partial().extend({
 
 export const productQuerySchema = z.object({
   category_id: z.coerce.number().int().positive().optional(),
+  brand_id: z.coerce.number().int().positive().optional(),
   search: z.string().optional(),
   store_id: z.coerce.number().int().positive().optional(),
   featured: z.enum(['true', 'false']).transform(v => v === 'true').optional(),

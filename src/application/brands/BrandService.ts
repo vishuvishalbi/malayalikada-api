@@ -27,6 +27,8 @@ export class BrandService {
   async softDelete(id: number) {
     const brand = await this.repo.findById(id);
     if (!brand) throw new NotFoundError('Brand not found');
+    const inUse = await this.repo.countProducts(id);
+    if (inUse > 0) throw new ConflictError(`Cannot delete: ${inUse} product${inUse === 1 ? '' : 's'} still use this brand`);
     await this.repo.softDelete(id);
   }
 }

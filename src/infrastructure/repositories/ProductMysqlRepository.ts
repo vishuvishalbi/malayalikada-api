@@ -14,6 +14,10 @@ export class ProductMysqlRepository implements IProductRepository {
       conditions.push('EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = ?)');
       params.push(filters.category_id);
     }
+    if (filters.brand_id) {
+      conditions.push('p.brand_id = ?');
+      params.push(filters.brand_id);
+    }
     if (filters.search) {
       conditions.push('(p.name LIKE ? OR p.barcode LIKE ? OR p.brand LIKE ?)');
       params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);

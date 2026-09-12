@@ -10,6 +10,8 @@ import { OrderService } from './OrderService';
 function makeOrdersRepo(overrides: Partial<any> = {}) {
   return {
     createWithReservation: vi.fn().mockResolvedValue({ id: 55, total_nzd: 20 }),
+    expireAbandonedUnpaid: vi.fn().mockResolvedValue(undefined),
+    clearHandedOffCart: vi.fn().mockResolvedValue(undefined),
     findById: vi.fn().mockResolvedValue({ id: 55, status: 'pending_approval', store_id: 5 }),
     updateStatus: vi.fn(),
     deductStock: vi.fn(),

@@ -43,6 +43,10 @@ export interface IOrderRepository {
     customerId: number
   ): Promise<IOrder>;
   releaseReservation(orderId: number): Promise<void>;
+  /** Expires the customer's unpaid pending orders (abandoned checkouts) and releases their stock holds. */
+  expireAbandonedUnpaid(customerId: number): Promise<void>;
+  /** Removes the cart lines an order was placed from — call once the order is paid or approved. */
+  clearHandedOffCart(orderId: number): Promise<void>;
   findByCustomer(customerId: number, offset: number, limit: number): Promise<{ orders: IOrder[]; total: number }>;
   findById(id: number): Promise<(IOrder & { orderItems: (IOrderItem & { name: string })[] }) | null>;
   findAdminDetail(id: number): Promise<AdminOrderDetail | null>;

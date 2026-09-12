@@ -56,6 +56,7 @@ export class CartService {
       total_weight_kg += (info?.weight_kg ?? 0) * i.quantity;
       return {
         productId: i.product_id,
+        reserved: i.reserved_at !== null,
         name: info?.name ?? '',
         quantity: i.quantity,
         unitPrice,
