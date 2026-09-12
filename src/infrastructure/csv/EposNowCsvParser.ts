@@ -116,7 +116,7 @@ export function parseEposNowProductCsv(buffer: Buffer): EposNowProductParseResul
     rows.push({
       externalId: (rec['ProductID'] || '').trim(),
       name,
-      description: (rec['Product Description'] || '').trim() || null,
+      description: cleanDescription(rec['Product Description'], rec['Product Name'] ?? rec['Name']),
       costPrice,
       sellingPrice,
       categoryName,
@@ -129,4 +129,11 @@ export function parseEposNowProductCsv(buffer: Buffer): EposNowProductParseResul
   });
 
   return { rows, errors };
+}
+
+/** EPOS exports often repeat the product name as its description; treat that as no description. */
+function cleanDescription(raw: string | undefined, name: string | undefined): string | null {
+  const d = (raw || '').trim();
+  if (!d) return null;
+  return d.toLowerCase() === (name || '').trim().toLowerCase() ? null : d;
 }
