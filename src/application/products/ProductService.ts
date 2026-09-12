@@ -8,12 +8,13 @@ export class ProductService {
 
   constructor(private repo: IProductRepository) {}
 
-  async list(filters: { category_id?: number; brand_id?: number; search?: string; store_id?: number; include_inactive?: boolean; page?: number; limit?: number }, customerId?: number) {
+  async list(filters: { category_id?: number; brand_id?: number; search?: string; store_id?: number; in_stock?: boolean; include_inactive?: boolean; page?: number; limit?: number }, customerId?: number) {
     const result = await this.repo.findAll({
       category_id: filters.category_id,
       brand_id: filters.brand_id,
       search: filters.search,
       store_id: filters.store_id,
+      in_stock: filters.in_stock,
       include_inactive: filters.include_inactive,
       page: filters.page ?? 1,
       limit: filters.limit ?? 20,

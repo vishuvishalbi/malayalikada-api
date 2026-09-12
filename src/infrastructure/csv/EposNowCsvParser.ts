@@ -61,14 +61,16 @@ export interface EposNowProductParseResult {
   errors: Array<{ line: number; error: string }>;
 }
 
-const GRAMS_UNIT = /([\d.]+)\s*(kg|g)\b/i;
+const WEIGHT_IN_NAME = /([\d.]+)\s*(kg|g)\b/i;
 
-function parseWeightFromName(name: string): number | null {
-  const m = name.match(GRAMS_UNIT);
+/** products.weight is kilograms per unit ("200G" -> 0.2, "5KG" -> 5). */
+export function parseWeightFromName(name: string): number | null {
+  const m = name.match(WEIGHT_IN_NAME);
   if (!m) return null;
   const value = parseFloat(m[1]);
-  if (isNaN(value)) return null;
-  return m[2].toLowerCase() === 'kg' ? value * 1000 : value;
+  if (isNaN(value) || value <= 0) return null;
+  const kg = m[2].toLowerCase() === 'kg' ? value : value / 1000;
+  return Math.round(kg * 1000) / 1000;
 }
 
 export function parseEposNowProductCsv(buffer: Buffer): EposNowProductParseResult {

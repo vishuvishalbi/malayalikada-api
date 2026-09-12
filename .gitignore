@@ -5,3 +5,4 @@ uploads/
 .DS_Store
 *.db
 logs/
+scripts/fix-weights-kg.log.json

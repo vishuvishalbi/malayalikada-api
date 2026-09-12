@@ -4,6 +4,8 @@ export interface ProductListFilters {
   category_id?: number;
   brand_id?: number;
   search?: string;
+  /** Only products with stock at store_id (ignored without store_id). */
+  in_stock?: boolean;
   store_id?: number;
   featured?: boolean;
   sort?: 'newest';

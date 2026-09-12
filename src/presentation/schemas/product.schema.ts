@@ -26,6 +26,7 @@ export const productQuerySchema = z.object({
   search: z.string().optional(),
   store_id: z.coerce.number().int().positive().optional(),
   featured: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
+  in_stock: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
   sort: z.enum(['newest']).optional(),
   include_inactive: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
   page: z.coerce.number().int().positive().default(1),

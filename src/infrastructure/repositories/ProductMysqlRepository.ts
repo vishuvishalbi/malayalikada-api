@@ -25,6 +25,9 @@ export class ProductMysqlRepository implements IProductRepository {
     if (filters.featured) {
       conditions.push('p.is_featured = 1');
     }
+    if (filters.in_stock && filters.store_id) {
+      conditions.push('COALESCE(ps.quantity, 0) > 0');
+    }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
     const orderBy = filters.sort === 'newest' ? 'p.created_at DESC' : 'p.name ASC';
@@ -61,7 +64,7 @@ export class ProductMysqlRepository implements IProductRepository {
       [...params, filters.limit, (filters.page - 1) * filters.limit]
     );
     const [countRows] = await db.query<RowDataPacket[]>(
-      `SELECT COUNT(*) as total FROM products p ${where}`,
+      `SELECT COUNT(*) as total FROM products p ${storeJoins} ${where}`,
       params
     );
     return { products: await this.attachCategories(rows as IProduct[]), total: (countRows[0] as RowDataPacket).total };
