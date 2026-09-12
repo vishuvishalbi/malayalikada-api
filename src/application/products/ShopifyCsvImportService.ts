@@ -1,5 +1,6 @@
 import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import { db } from '../../infrastructure/database/connection';
+import { resolveBrandId, ensurePrimaryCategory } from '../../infrastructure/products/productWriteHelpers';
 import { parseShopifyCsv } from '../../infrastructure/csv/ShopifyCsvParser';
 import { parseShopifyInventoryCsv } from '../../infrastructure/csv/ShopifyInventoryCsvParser';
 import { CsvImportLogRepository } from '../../infrastructure/repositories/CsvImportLogRepository';
@@ -68,23 +69,26 @@ export class ShopifyCsvImportService {
             [row.barcode],
           );
 
+          const brandId = await resolveBrandId(conn, row.vendor);
+          const brandName = brandId ? String(row.vendor).trim() : null;
           let productId: number;
           if ((existing as RowDataPacket[]).length > 0) {
             productId = (existing as RowDataPacket[])[0].id as number;
             await conn.query(
               `UPDATE products
-               SET name = ?, brand = ?, weight = ?, category_id = ?, is_active = ?, updated_at = NOW()
+               SET name = ?, brand = ?, brand_id = ?, weight = ?, category_id = ?, is_active = ?, updated_at = NOW()
                WHERE id = ?`,
-              [row.name, row.vendor, row.weight, categoryId, isActive, productId],
+              [row.name, brandName, brandId, row.weight, categoryId, isActive, productId],
             );
           } else {
             const [result] = await conn.query<ResultSetHeader>(
-              `INSERT INTO products (barcode, name, brand, weight, category_id, is_active, description, unit, supplier, is_featured)
-               VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0)`,
-              [row.barcode, row.name, row.vendor, row.weight, categoryId, isActive],
+              `INSERT INTO products (barcode, name, brand, brand_id, weight, category_id, is_active, description, unit, supplier, is_featured)
+               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0)`,
+              [row.barcode, row.name, brandName, brandId, row.weight, categoryId, isActive],
             );
             productId = result.insertId;
           }
+          await ensurePrimaryCategory(conn, productId, categoryId);
 
           // 3. Upsert store_pricing
           await conn.query(

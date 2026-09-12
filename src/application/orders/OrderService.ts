@@ -18,7 +18,7 @@ export class OrderService {
 
   async submit(customerId: number) {
     const cart = await this.carts.findByCustomer(customerId);
-    const items = cart ? await this.carts.findItems(customerId) : [];
+    const items = cart ? await this.carts.expireAndFindItems(customerId) : [];
     if (!cart || items.length === 0) throw new ValidationError('Cart is empty');
 
     const productIds = items.map(i => i.product_id);

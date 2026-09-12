@@ -23,6 +23,7 @@ import { paymentRoutes } from './presentation/routes/payment.routes';
 import { itemRequestRoutes } from './presentation/routes/itemRequest.routes';
 import { adminRoutes } from './presentation/routes/admin.routes';
 import { bannerRoutes } from './presentation/routes/banner.routes';
+import { brandRoutes } from './presentation/routes/brand.routes';
 import { notifyRequestRoutes } from './presentation/routes/notifyRequest.routes';
 import { favoriteRoutes } from './presentation/routes/favorite.routes';
 import { deliverySlabRoutes } from './presentation/routes/deliverySlab.routes';
@@ -93,6 +94,7 @@ app.setErrorHandler((error, request, reply) => {
 app.register(authRoutes, { prefix: '/api/v1' });
 app.register(storeRoutes, { prefix: '/api/v1' });
 app.register(categoryRoutes, { prefix: '/api/v1' });
+app.register(brandRoutes, { prefix: '/api/v1' });
 app.register(productRoutes, { prefix: '/api/v1' });
 app.register(stockRoutes, { prefix: '/api/v1' });
 app.register(pricingRoutes, { prefix: '/api/v1' });

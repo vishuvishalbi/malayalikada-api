@@ -5,7 +5,10 @@ export const createProductSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().optional(),
   category_id: z.number().int().positive(),
-  brand: z.string().max(100).optional(),
+  /** Additional categories; the primary category_id is always included. */
+  category_ids: z.array(z.number().int().positive()).max(20).optional(),
+  brand: z.string().max(100).nullable().optional(),
+  brand_id: z.number().int().positive().nullable().optional(),
   unit: z.string().max(50).optional(),
   weight: z.number().positive().optional(),
   supplier: z.string().max(150).optional(),

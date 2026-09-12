@@ -23,6 +23,7 @@ function makeCartsRepo(items: any[]) {
   return {
     findByCustomer: vi.fn().mockResolvedValue({ customer_id: 1, store_id: 5 }),
     findItems: vi.fn().mockResolvedValue(items),
+    expireAndFindItems: vi.fn().mockResolvedValue(items),
   } as any;
 }
 function makeDelivery() {

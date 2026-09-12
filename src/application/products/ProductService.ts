@@ -67,8 +67,8 @@ export class ProductService {
   }
 
   async create(data: {
-    barcode: string; name: string; description?: string; category_id: number;
-    brand?: string; unit?: string; weight?: number; supplier?: string; is_featured?: boolean;
+    barcode: string; name: string; description?: string; category_id: number; category_ids?: number[];
+    brand?: string | null; brand_id?: number | null; unit?: string; weight?: number; supplier?: string; is_featured?: boolean;
   }) {
     const existing = await this.repo.findByBarcode(data.barcode);
     if (existing) throw new ConflictError('Barcode already exists');
@@ -85,8 +85,8 @@ export class ProductService {
   }
 
   async update(id: number, data: Partial<{
-    barcode: string; name: string; description: string; category_id: number;
-    brand: string; unit: string; weight: number; supplier: string; is_active: boolean;
+    barcode: string; name: string; description: string; category_id: number; category_ids: number[];
+    brand: string | null; brand_id: number | null; unit: string; weight: number; supplier: string; is_active: boolean; is_featured: boolean;
   }>) {
     if (data.barcode) {
       const existing = await this.repo.findByBarcode(data.barcode);

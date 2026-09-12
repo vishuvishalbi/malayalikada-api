@@ -6,6 +6,10 @@ export interface IProduct {
   category_id: number;
   category_name?: string;
   brand: string | null;
+  brand_id?: number | null;
+  /** All categories (incl. primary category_id). */
+  category_ids?: number[];
+  categories?: { id: number; name: string }[];
   unit: string | null;
   weight: number | null;
   supplier: string | null;

@@ -1,5 +1,6 @@
 import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import { db } from '../../infrastructure/database/connection';
+import { resolveBrandId, ensurePrimaryCategory } from '../../infrastructure/products/productWriteHelpers';
 import { parseEposNowCategoryCsv, parseEposNowProductCsv } from '../../infrastructure/csv/EposNowCsvParser';
 import { CsvImportLogRepository } from '../../infrastructure/repositories/CsvImportLogRepository';
 import { LocalFileStorage } from '../../infrastructure/storage/LocalFileStorage';
@@ -125,23 +126,26 @@ export class EposNowCsvImportService {
             [row.barcode],
           );
 
+          const brandId = await resolveBrandId(conn, row.brand);
+          const brandName = brandId ? String(row.brand).trim() : null;
           let productId: number;
           if (existing.length > 0) {
             productId = existing[0].id as number;
             await conn.query(
               `UPDATE products
-               SET name = ?, description = ?, brand = ?, weight = ?, category_id = ?, is_active = ?, updated_at = NOW()
+               SET name = ?, description = ?, brand = ?, brand_id = ?, weight = ?, category_id = ?, is_active = ?, updated_at = NOW()
                WHERE id = ?`,
-              [row.name, row.description, row.brand, row.weight, categoryId, row.isSellOnTill ? 1 : 0, productId],
+              [row.name, row.description, brandName, brandId, row.weight, categoryId, row.isSellOnTill ? 1 : 0, productId],
             );
           } else {
             const [result] = await conn.query<ResultSetHeader>(
-              `INSERT INTO products (barcode, name, description, brand, weight, category_id, is_active, unit, supplier, is_featured)
-               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0)`,
-              [row.barcode, row.name, row.description, row.brand, row.weight, categoryId, row.isSellOnTill ? 1 : 0],
+              `INSERT INTO products (barcode, name, description, brand, brand_id, weight, category_id, is_active, unit, supplier, is_featured)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0)`,
+              [row.barcode, row.name, row.description, brandName, brandId, row.weight, categoryId, row.isSellOnTill ? 1 : 0],
             );
             productId = result.insertId;
           }
+          await ensurePrimaryCategory(conn, productId, categoryId);
 
           // 3. Upsert store_pricing
           await conn.query(

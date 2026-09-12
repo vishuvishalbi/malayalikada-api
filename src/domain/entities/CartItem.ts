@@ -4,5 +4,6 @@ export interface ICartItem {
   product_id: number;
   store_id: number;
   quantity: number;
-  reserved_at: Date;
+  /** NULL when the stock hold has lapsed; the line is re-reserved on the next cart read. */
+  reserved_at: Date | null;
 }

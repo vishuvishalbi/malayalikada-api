@@ -24,18 +24,44 @@ export class CartMysqlRepository implements ICartRepository {
     return rows as unknown as ICartItem[];
   }
 
+  /**
+   * Reconciles the cart with stock: lapses stale holds, re-reserves any lapsed
+   * line (clamped to what is available; dropped only if nothing is left) and
+   * refreshes the hold on live lines so an active customer never loses them.
+   */
   async expireAndFindItems(customerId: number): Promise<ICartItem[]> {
     const current = await this.findItems(customerId);
-    const seen = new Set<string>();
     for (const item of current) {
-      const key = `${item.product_id}:${item.store_id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
       const conn = await db.getConnection();
       try {
         await conn.beginTransaction();
-        await conn.query('SELECT * FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE', [item.product_id, item.store_id]);
+        const [stockRows] = await conn.query<RowDataPacket[]>(
+          'SELECT quantity, reserved_quantity, max_reserve_qty FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE',
+          [item.product_id, item.store_id]
+        );
         await expireStaleReservations(conn, item.product_id, item.store_id);
+        const [lineRows] = await conn.query<RowDataPacket[]>('SELECT reserved_at, quantity FROM cart_items WHERE id = ?', [item.id]);
+        const line = (lineRows as any[])[0];
+        if (line?.reserved_at) {
+          await conn.query('UPDATE cart_items SET reserved_at = NOW() WHERE id = ?', [item.id]);
+        } else if (line) {
+          const [freshRows] = await conn.query<RowDataPacket[]>(
+            'SELECT quantity, reserved_quantity, max_reserve_qty FROM product_stock WHERE product_id = ? AND store_id = ?',
+            [item.product_id, item.store_id]
+          );
+          const stock = (freshRows as any[])[0] ?? (stockRows as any[])[0];
+          const available = stock ? Math.min(stock.quantity - stock.reserved_quantity, stock.max_reserve_qty) : 0;
+          const take = Math.min(line.quantity, available);
+          if (take <= 0) {
+            await conn.query('DELETE FROM cart_items WHERE id = ?', [item.id]);
+          } else {
+            await conn.query('UPDATE cart_items SET quantity = ?, reserved_at = NOW(), updated_at = NOW() WHERE id = ?', [take, item.id]);
+            await conn.query(
+              'UPDATE product_stock SET reserved_quantity = reserved_quantity + ? WHERE product_id = ? AND store_id = ?',
+              [take, item.product_id, item.store_id]
+            );
+          }
+        }
         await conn.commit();
       } catch (e) {
         await conn.rollback();
@@ -80,8 +106,8 @@ export class CartMysqlRepository implements ICartRepository {
         [customerId, productId]
       );
       const existing = (existingRows as any[])[0] as ICartItem | undefined;
-      const previousQuantity = existing?.quantity ?? 0;
-      const delta = quantity - previousQuantity;
+      const previouslyReserved = existing?.reserved_at ? existing.quantity : 0;
+      const delta = quantity - previouslyReserved;
 
       if (quantity > stock.max_reserve_qty) {
         throw new ValidationError(`Cannot exceed maximum quantity (${stock.max_reserve_qty}) for this item`);
@@ -140,10 +166,12 @@ export class CartMysqlRepository implements ICartRepository {
       }
 
       await conn.query('SELECT * FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE', [item.product_id, item.store_id]);
-      await conn.query(
-        'UPDATE product_stock SET reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',
-        [item.quantity, item.product_id, item.store_id]
-      );
+      if (item.reserved_at) {
+        await conn.query(
+          'UPDATE product_stock SET reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',
+          [item.quantity, item.product_id, item.store_id]
+        );
+      }
       await conn.query('DELETE FROM cart_items WHERE id = ?', [item.id]);
 
       await conn.commit();
@@ -162,6 +190,7 @@ export class CartMysqlRepository implements ICartRepository {
 
       const [items] = await conn.query<RowDataPacket[]>('SELECT * FROM cart_items WHERE cart_id = ? ORDER BY product_id, store_id', [customerId]);
       for (const item of items as any[]) {
+        if (!item.reserved_at) continue;
         await conn.query('SELECT * FROM product_stock WHERE product_id = ? AND store_id = ? FOR UPDATE', [item.product_id, item.store_id]);
         await conn.query(
           'UPDATE product_stock SET reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',

@@ -5,7 +5,8 @@ const RESERVATION_TTL_MINUTES = 15;
 export async function expireStaleReservations(conn: PoolConnection, productId: number, storeId: number): Promise<void> {
   const [staleCartItems] = await conn.query<RowDataPacket[]>(
     `SELECT id, quantity FROM cart_items
-     WHERE product_id = ? AND store_id = ? AND reserved_at < DATE_SUB(NOW(), INTERVAL ${RESERVATION_TTL_MINUTES} MINUTE)`,
+     WHERE product_id = ? AND store_id = ? AND reserved_at IS NOT NULL
+       AND reserved_at < DATE_SUB(NOW(), INTERVAL ${RESERVATION_TTL_MINUTES} MINUTE)`,
     [productId, storeId]
   );
   for (const row of staleCartItems as any[]) {
@@ -13,7 +14,9 @@ export async function expireStaleReservations(conn: PoolConnection, productId: n
       'UPDATE product_stock SET reserved_quantity = GREATEST(0, reserved_quantity - ?) WHERE product_id = ? AND store_id = ?',
       [row.quantity, productId, storeId]
     );
-    await conn.query('DELETE FROM cart_items WHERE id = ?', [row.id]);
+    // Lapse the hold but keep the line: the customer's cart survives, and the
+    // next GET /cart re-reserves it if stock is still available.
+    await conn.query('UPDATE cart_items SET reserved_at = NULL, updated_at = NOW() WHERE id = ?', [row.id]);
   }
 
   const [staleOrderItems] = await conn.query<RowDataPacket[]>(

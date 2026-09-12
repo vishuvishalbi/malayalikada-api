@@ -3,7 +3,8 @@ import { CsvImportLogRepository } from '../../infrastructure/repositories/CsvImp
 import { LocalFileStorage } from '../../infrastructure/storage/LocalFileStorage';
 import { csvCell } from '../../shared/csv';
 import { db } from '../../infrastructure/database/connection';
-import { RowDataPacket } from 'mysql2/promise';
+import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
+import { resolveBrandId, ensurePrimaryCategory } from '../../infrastructure/products/productWriteHelpers';
 import { ValidationError } from '../../shared/errors/AppError';
 
 export const MAX_IMPORT_ROWS = 5000;
@@ -36,17 +37,23 @@ export class CsvImportService {
           const categoryId = parseInt(row.category_id);
           if (isNaN(categoryId)) throw new Error('Invalid category_id');
 
+          const brandId = await resolveBrandId(conn, row.brand);
+          const brandName = brandId ? row.brand!.trim() : null;
+          let productId: number;
           if ((existing as any[]).length > 0) {
+            productId = (existing as any[])[0].id as number;
             await conn.query(
-              'UPDATE products SET name=?, description=?, category_id=?, brand=?, unit=?, weight=?, supplier=?, updated_at=NOW() WHERE barcode=? AND deleted_at IS NULL',
-              [row.name, row.description ?? null, categoryId, row.brand ?? null, row.unit ?? null, weight, row.supplier ?? null, row.barcode]
+              'UPDATE products SET name=?, description=?, category_id=?, brand=?, brand_id=?, unit=?, weight=?, supplier=?, updated_at=NOW() WHERE id=?',
+              [row.name, row.description ?? null, categoryId, brandName, brandId, row.unit ?? null, weight, row.supplier ?? null, productId]
             );
           } else {
-            await conn.query(
-              'INSERT INTO products (barcode, name, description, category_id, brand, unit, weight, supplier, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)',
-              [row.barcode, row.name, row.description ?? null, categoryId, row.brand ?? null, row.unit ?? null, weight, row.supplier ?? null]
+            const [ins] = await conn.query<ResultSetHeader>(
+              'INSERT INTO products (barcode, name, description, category_id, brand, brand_id, unit, weight, supplier, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+              [row.barcode, row.name, row.description ?? null, categoryId, brandName, brandId, row.unit ?? null, weight, row.supplier ?? null]
             );
+            productId = ins.insertId;
           }
+          await ensurePrimaryCategory(conn, productId, categoryId);
           rowsOk++;
         } catch (e: any) {
           rowErrors.push({ line: lineNum, error: e.message });

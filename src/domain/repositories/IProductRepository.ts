@@ -27,6 +27,7 @@ export interface IProductRepository {
   findRelated(categoryId: number, excludeId: number, storeId?: number, limit?: number): Promise<IProduct[]>;
   findTrending(storeId?: number, limit?: number): Promise<IProduct[]>;
   create(data: Omit<IProduct, 'id' | 'deleted_at' | 'created_at' | 'updated_at' | 'first_image_url'>): Promise<IProduct>;
+  /** `category_ids` (if given) replaces the full category set; `brand` name is resolved to a brand entity. */
   update(id: number, data: Partial<Omit<IProduct, 'id' | 'created_at' | 'updated_at'>>): Promise<IProduct | null>;
   softDelete(id: number): Promise<void>;
   addImage(productId: number, filename: string, sortOrder: number): Promise<IProductImage>;

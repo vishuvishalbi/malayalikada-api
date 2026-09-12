@@ -2,6 +2,7 @@ import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import { db } from '../database/connection';
 import { IProduct, IProductImage } from '../../domain/entities/Product';
 import { IProductRepository, IProductStoreData, ProductListFilters } from '../../domain/repositories/IProductRepository';
+import { resolveBrandId, syncProductCategories } from '../products/productWriteHelpers';
 
 export class ProductMysqlRepository implements IProductRepository {
   async findAll(filters: ProductListFilters): Promise<{ products: IProduct[]; total: number }> {
@@ -10,7 +11,7 @@ export class ProductMysqlRepository implements IProductRepository {
     const params: unknown[] = [];
 
     if (filters.category_id) {
-      conditions.push('p.category_id = ?');
+      conditions.push('EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = ?)');
       params.push(filters.category_id);
     }
     if (filters.search) {
@@ -59,7 +60,7 @@ export class ProductMysqlRepository implements IProductRepository {
       `SELECT COUNT(*) as total FROM products p ${where}`,
       params
     );
-    return { products: rows as IProduct[], total: (countRows[0] as RowDataPacket).total };
+    return { products: await this.attachCategories(rows as IProduct[]), total: (countRows[0] as RowDataPacket).total };
   }
 
   async findById(id: number): Promise<IProduct | null> {
@@ -74,7 +75,9 @@ export class ProductMysqlRepository implements IProductRepository {
        GROUP BY p.id, c.name`,
       [id]
     );
-    return (rows[0] as IProduct) || null;
+    if (!rows[0]) return null;
+    const [product] = await this.attachCategories([rows[0] as IProduct]);
+    return product;
   }
 
   async findByBarcode(barcode: string): Promise<IProduct | null> {
@@ -134,25 +137,47 @@ export class ProductMysqlRepository implements IProductRepository {
        LIMIT ?`,
       [categoryId, excludeId, limit]
     );
-    return rows as IProduct[];
+    return this.attachCategories(rows as IProduct[]);
   }
 
   async create(data: Omit<IProduct, 'id' | 'deleted_at' | 'created_at' | 'updated_at' | 'first_image_url'>): Promise<IProduct> {
+    const brand = await this.resolveBrand(data);
     const [result] = await db.query<ResultSetHeader>(
-      'INSERT INTO products (barcode, name, description, category_id, brand, unit, weight, supplier, is_active, is_featured) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [data.barcode, data.name, data.description ?? null, data.category_id, data.brand ?? null, data.unit ?? null, data.weight ?? null, data.supplier ?? null, data.is_active ? 1 : 0, data.is_featured ? 1 : 0]
+      'INSERT INTO products (barcode, name, description, category_id, brand, brand_id, unit, weight, supplier, is_active, is_featured) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [data.barcode, data.name, data.description ?? null, data.category_id, brand.name, brand.id, data.unit ?? null, data.weight ?? null, data.supplier ?? null, data.is_active ? 1 : 0, data.is_featured ? 1 : 0]
     );
+    await syncProductCategories(db, result.insertId, data.category_id, data.category_ids);
     return (await this.findById(result.insertId))!;
   }
 
   async update(id: number, data: Partial<Omit<IProduct, 'id' | 'created_at' | 'updated_at'>>): Promise<IProduct | null> {
-    const ALLOWED = ['barcode', 'name', 'description', 'category_id', 'brand', 'unit', 'weight', 'supplier', 'is_active', 'is_featured', 'deleted_at'];
-    const entries = Object.entries(data).filter(([k]) => ALLOWED.includes(k));
-    if (entries.length === 0) return this.findById(id);
-    const fields = entries.map(([k]) => `${k} = ?`).join(', ');
-    const values = [...entries.map(([, v]) => v), id];
-    await db.query(`UPDATE products SET ${fields}, updated_at = NOW() WHERE id = ?`, values);
+    const ALLOWED = ['barcode', 'name', 'description', 'category_id', 'brand', 'brand_id', 'unit', 'weight', 'supplier', 'is_active', 'is_featured', 'deleted_at'];
+    const patch: Record<string, unknown> = { ...data };
+    if ('brand' in data || 'brand_id' in data) {
+      const brand = await this.resolveBrand(data);
+      patch.brand = brand.name;
+      patch.brand_id = brand.id;
+    }
+    const entries = Object.entries(patch).filter(([k]) => ALLOWED.includes(k));
+    if (entries.length > 0) {
+      const fields = entries.map(([k]) => `${k} = ?`).join(', ');
+      await db.query(`UPDATE products SET ${fields}, updated_at = NOW() WHERE id = ?`, [...entries.map(([, v]) => v), id]);
+    }
+    if (data.category_ids !== undefined || data.category_id !== undefined) {
+      const [cur] = await db.query<RowDataPacket[]>('SELECT category_id FROM products WHERE id = ?', [id]);
+      if (cur[0]) await syncProductCategories(db, id, cur[0].category_id, data.category_ids);
+    }
     return this.findById(id);
+  }
+
+  /** brand_id wins; else a brand name is find-or-created. Returns the denormalised pair to store. */
+  private async resolveBrand(data: { brand?: string | null; brand_id?: number | null }): Promise<{ id: number | null; name: string | null }> {
+    if (data.brand_id) {
+      const [rows] = await db.query<RowDataPacket[]>('SELECT id, name FROM brands WHERE id = ? AND deleted_at IS NULL', [data.brand_id]);
+      if (rows[0]) return { id: rows[0].id, name: rows[0].name };
+    }
+    const id = await resolveBrandId(db, data.brand);
+    return { id, name: id ? data.brand!.trim() : null };
   }
 
   async softDelete(id: number): Promise<void> {
@@ -218,7 +243,7 @@ export class ProductMysqlRepository implements IProductRepository {
 
   async findBrands(): Promise<string[]> {
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT DISTINCT brand FROM products WHERE brand IS NOT NULL AND brand != '' AND deleted_at IS NULL ORDER BY brand ASC`,
+      `SELECT name AS brand FROM brands WHERE deleted_at IS NULL ORDER BY name ASC`,
     );
     return (rows as RowDataPacket[]).map(r => r.brand as string);
   }
@@ -271,7 +296,7 @@ export class ProductMysqlRepository implements IProductRepository {
       [limit]
     );
 
-    if ((rows as IProduct[]).length > 0) return rows as IProduct[];
+    if ((rows as IProduct[]).length > 0) return this.attachCategories(rows as IProduct[]);
 
     // Fallback: featured products
     const [featuredRows] = await db.query<RowDataPacket[]>(
@@ -296,6 +321,30 @@ export class ProductMysqlRepository implements IProductRepository {
        LIMIT ?`,
       [limit]
     );
-    return featuredRows as IProduct[];
+    return this.attachCategories(featuredRows as IProduct[]);
+  }
+
+  /** Populates category_ids / categories for a page of products in one query. */
+  private async attachCategories(products: IProduct[]): Promise<IProduct[]> {
+    if (products.length === 0) return products;
+    const ids = products.map(p => p.id);
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT pc.product_id, c.id, c.name
+       FROM product_categories pc
+       JOIN categories c ON c.id = pc.category_id AND c.deleted_at IS NULL
+       WHERE pc.product_id IN (${ids.map(() => '?').join(',')})
+       ORDER BY c.sort_order, c.name`,
+      ids
+    );
+    const byProduct = new Map<number, { id: number; name: string }[]>();
+    for (const r of rows as any[]) {
+      const list = byProduct.get(r.product_id) ?? [];
+      list.push({ id: r.id, name: r.name });
+      byProduct.set(r.product_id, list);
+    }
+    return products.map(p => {
+      const cats = byProduct.get(p.id) ?? (p.category_id ? [{ id: p.category_id, name: p.category_name ?? '' }] : []);
+      return { ...p, categories: cats, category_ids: cats.map(c => c.id) };
+    });
   }
 }
