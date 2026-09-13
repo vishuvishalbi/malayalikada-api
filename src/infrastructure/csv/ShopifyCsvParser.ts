@@ -4,6 +4,12 @@ export interface ShopifyProductRow {
   handle: string;
   name: string;
   vendor: string | null;
+  /**
+   * Category name resolved from the export, in Shopify's own order of
+   * specificity: the merchant-assigned `Type`, then the `Product Category`
+   * taxonomy path, then the first tag. Empty when the row carries no category
+   * at all — callers must decide what to do rather than invent one.
+   */
   categoryPath: string;
   barcode: string;
   sku: string;
@@ -18,6 +24,24 @@ export interface ShopifyProductRow {
 export interface ShopifyParseResult {
   rows: ShopifyProductRow[];
   errors: Array<{ line: number; error: string }>;
+}
+
+/**
+ * Shopify spreads category information across three columns and populates them
+ * inconsistently: `Product Category` is the standard taxonomy (often blank),
+ * `Type` is the merchant's own label (usually set), and `Tags` is free-form.
+ * Reading only the first leaves most rows uncategorised, so fall through them
+ * in order of how specific each is to this merchant's catalogue.
+ */
+function resolveCategory(rec: Record<string, string>): string {
+  const type = (rec['Type'] || '').trim();
+  if (type) return type;
+
+  const taxonomy = (rec['Product Category'] || '').trim();
+  if (taxonomy) return taxonomy;
+
+  const firstTag = (rec['Tags'] || '').split(',')[0]?.trim() ?? '';
+  return firstTag;
 }
 
 export function parseShopifyCsv(buffer: Buffer): ShopifyParseResult {
@@ -64,7 +88,7 @@ export function parseShopifyCsv(buffer: Buffer): ShopifyParseResult {
       handle: rec['Handle'] || '',
       name,
       vendor: (rec['Vendor'] || '').trim() || null,
-      categoryPath: (rec['Product Category'] || '').trim(),
+      categoryPath: resolveCategory(rec),
       barcode,
       sku,
       price,

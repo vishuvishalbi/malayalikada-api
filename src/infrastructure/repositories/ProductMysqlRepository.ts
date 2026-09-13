@@ -10,13 +10,15 @@ export class ProductMysqlRepository implements IProductRepository {
     if (!filters.include_inactive) conditions.push('p.is_active = 1');
     const params: unknown[] = [];
 
-    if (filters.category_id) {
-      conditions.push('EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = ?)');
-      params.push(filters.category_id);
+    if (filters.category_ids?.length) {
+      conditions.push(
+        `EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (${filters.category_ids.map(() => '?').join(',')}))`
+      );
+      params.push(...filters.category_ids);
     }
-    if (filters.brand_id) {
-      conditions.push('p.brand_id = ?');
-      params.push(filters.brand_id);
+    if (filters.brand_ids?.length) {
+      conditions.push(`p.brand_id IN (${filters.brand_ids.map(() => '?').join(',')})`);
+      params.push(...filters.brand_ids);
     }
     if (filters.search) {
       conditions.push('(p.name LIKE ? OR p.barcode LIKE ? OR p.brand LIKE ?)');
@@ -25,12 +27,24 @@ export class ProductMysqlRepository implements IProductRepository {
     if (filters.featured) {
       conditions.push('p.is_featured = 1');
     }
-    if (filters.in_stock && filters.store_id) {
-      conditions.push('COALESCE(ps.quantity, 0) > 0');
+    // Stock and price live in store-scoped tables, so these only apply once a
+    // store is chosen; the joins below don't exist otherwise.
+    if (filters.store_id) {
+      if (filters.in_stock) {
+        conditions.push('COALESCE(ps.quantity, 0) > 0');
+      }
+      if (filters.min_price !== undefined) {
+        conditions.push('sp.price_nzd >= ?');
+        params.push(filters.min_price);
+      }
+      if (filters.max_price !== undefined) {
+        conditions.push('sp.price_nzd <= ?');
+        params.push(filters.max_price);
+      }
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
-    const orderBy = filters.sort === 'newest' ? 'p.created_at DESC' : 'p.name ASC';
+    const orderBy = this.buildOrderBy(filters);
 
     const storeJoins = filters.store_id
       ? `LEFT JOIN store_pricing sp ON sp.product_id = p.id AND sp.store_id = ${Number(filters.store_id)}
@@ -68,6 +82,31 @@ export class ProductMysqlRepository implements IProductRepository {
       params
     );
     return { products: await this.attachCategories(rows as IProduct[]), total: (countRows[0] as RowDataPacket).total };
+  }
+
+  /**
+   * Price sorts read the store-scoped `sp` join, so they degrade to name order
+   * when no store is selected. Unpriced products sort last in both directions
+   * rather than clustering at the top as NULLs.
+   */
+  private buildOrderBy(filters: ProductListFilters): string {
+    switch (filters.sort) {
+      case 'newest':
+        return 'p.created_at DESC, p.id DESC';
+      case 'name_desc':
+        return 'p.name DESC, p.id ASC';
+      case 'price_asc':
+        return filters.store_id
+          ? 'sp.price_nzd IS NULL, sp.price_nzd ASC, p.id ASC'
+          : 'p.name ASC, p.id ASC';
+      case 'price_desc':
+        return filters.store_id
+          ? 'sp.price_nzd IS NULL, sp.price_nzd DESC, p.id ASC'
+          : 'p.name ASC, p.id ASC';
+      case 'name_asc':
+      default:
+        return 'p.name ASC, p.id ASC';
+    }
   }
 
   async findById(id: number): Promise<IProduct | null> {

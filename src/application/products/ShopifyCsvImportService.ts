@@ -42,10 +42,17 @@ export class ShopifyCsvImportService {
         const row = rows[i];
         const lineNum = i + 2;
         try {
-          // 1. Category: derive short name from last '>' segment
-          const shortName = row.categoryPath
-            ? row.categoryPath.split('>').pop()!.trim() || 'Uncategorized'
-            : 'Uncategorized';
+          // 1. Category: derive short name from last '>' segment. A row with no
+          // category is reported rather than swept into a catch-all bucket —
+          // silently defaulting is what left the catalogue uncategorised.
+          const shortName = row.categoryPath.split('>').pop()?.trim() ?? '';
+          if (!shortName) {
+            rowErrors.push({
+              line: lineNum,
+              error: `Row skipped: no category (set Type, Product Category or Tags) for "${row.name}"`,
+            });
+            continue;
+          }
 
           const [catRows] = await conn.query<RowDataPacket[]>(
             'SELECT id FROM categories WHERE name = ? AND deleted_at IS NULL LIMIT 1',

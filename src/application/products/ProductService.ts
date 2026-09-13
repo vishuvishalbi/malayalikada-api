@@ -1,5 +1,5 @@
 import path from 'path';
-import { IProductRepository } from '../../domain/repositories/IProductRepository';
+import { IProductRepository, ProductListFilters } from '../../domain/repositories/IProductRepository';
 import { LocalFileStorage } from '../../infrastructure/storage/LocalFileStorage';
 import { NotFoundError, ValidationError, ConflictError } from '../../shared/errors/AppError';
 
@@ -8,13 +8,17 @@ export class ProductService {
 
   constructor(private repo: IProductRepository) {}
 
-  async list(filters: { category_id?: number; brand_id?: number; search?: string; store_id?: number; in_stock?: boolean; include_inactive?: boolean; page?: number; limit?: number }, customerId?: number) {
+  async list(filters: Partial<Omit<ProductListFilters, 'page' | 'limit'>> & { page?: number; limit?: number }, customerId?: number) {
     const result = await this.repo.findAll({
-      category_id: filters.category_id,
-      brand_id: filters.brand_id,
+      category_ids: filters.category_ids,
+      brand_ids: filters.brand_ids,
       search: filters.search,
       store_id: filters.store_id,
       in_stock: filters.in_stock,
+      featured: filters.featured,
+      min_price: filters.min_price,
+      max_price: filters.max_price,
+      sort: filters.sort,
       include_inactive: filters.include_inactive,
       page: filters.page ?? 1,
       limit: filters.limit ?? 20,

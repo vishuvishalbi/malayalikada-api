@@ -1,14 +1,22 @@
 import { IProduct, IProductImage } from '../entities/Product';
 
+export type ProductSort = 'newest' | 'price_asc' | 'price_desc' | 'name_asc' | 'name_desc';
+
 export interface ProductListFilters {
-  category_id?: number;
-  brand_id?: number;
+  /** Matches products in ANY of these categories. */
+  category_ids?: number[];
+  /** Matches products of ANY of these brands. */
+  brand_ids?: number[];
   search?: string;
   /** Only products with stock at store_id (ignored without store_id). */
   in_stock?: boolean;
   store_id?: number;
   featured?: boolean;
-  sort?: 'newest';
+  /** Inclusive bounds on store_pricing.price_nzd (ignored without store_id). */
+  min_price?: number;
+  max_price?: number;
+  /** Price sorts require store_id; they fall back to name_asc without one. */
+  sort?: ProductSort;
   include_inactive?: boolean;
   page: number;
   limit: number;
