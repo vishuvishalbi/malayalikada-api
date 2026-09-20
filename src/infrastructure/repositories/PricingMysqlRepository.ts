@@ -12,7 +12,7 @@ export class PricingMysqlRepository {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT sp.*, p.name AS product_name FROM store_pricing sp LEFT JOIN products p ON p.id = sp.product_id ${where} ORDER BY sp.product_id, sp.store_id`,
+      `SELECT sp.*, p.name AS product_name, p.barcode AS barcode FROM store_pricing sp LEFT JOIN products p ON p.id = sp.product_id ${where} ORDER BY sp.product_id, sp.store_id`,
       params
     );
     return rows as IStorePricing[];

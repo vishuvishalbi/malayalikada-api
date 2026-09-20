@@ -1,7 +1,15 @@
 import path from 'path';
 import { IProductRepository, ProductListFilters } from '../../domain/repositories/IProductRepository';
 import { LocalFileStorage } from '../../infrastructure/storage/LocalFileStorage';
+import { csvCell } from '../../shared/csv';
 import { NotFoundError, ValidationError, ConflictError } from '../../shared/errors/AppError';
+
+/** Export column order — the CSV importer's columns come first for round-tripping. */
+const PRODUCT_EXPORT_COLUMNS = [
+  'barcode', 'name', 'category_id', 'primary_category', 'categories', 'brand',
+  'unit', 'weight', 'supplier', 'description', 'is_active', 'is_featured',
+  'price_nzd', 'stock_quantity', 'image_urls',
+] as const;
 
 export class ProductService {
   private storage = new LocalFileStorage();
@@ -140,5 +148,44 @@ export class ProductService {
 
   async getBrands() {
     return this.repo.findBrands();
+  }
+
+  /**
+   * Renders the full catalog (excluding soft-deleted products, including
+   * inactive ones) as a CSV document. Column order keeps the import columns
+   * first so an exported file round-trips through the CSV importer.
+   */
+  async exportCsv(storeId?: number): Promise<string> {
+    const rows = await this.repo.findAllForExport(storeId);
+    const lines: string[] = [PRODUCT_EXPORT_COLUMNS.join(',')];
+
+    for (const r of rows) {
+      lines.push([
+        r.barcode,
+        r.name,
+        r.category_id,
+        r.primary_category,
+        r.categories.join('|'),
+        r.brand,
+        r.unit,
+        r.weight,
+        r.supplier,
+        r.description,
+        r.is_active ? 'true' : 'false',
+        r.is_featured ? 'true' : 'false',
+        r.price_nzd,
+        r.stock_quantity,
+        r.image_filenames.map(f => this.toPublicUrl(f)).join('|'),
+      ].map(csvCell).join(','));
+    }
+
+    return `${lines.join('\n')}\n`;
+  }
+
+  /** Image rows may already hold an absolute URL; only bare filenames need mapping. */
+  private toPublicUrl(filenameOrUrl: string): string {
+    return /^https?:\/\//i.test(filenameOrUrl) || filenameOrUrl.startsWith('/')
+      ? filenameOrUrl
+      : this.storage.getUrl(filenameOrUrl);
   }
 }

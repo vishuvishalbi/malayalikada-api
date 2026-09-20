@@ -19,7 +19,7 @@ export class CategoryMysqlRepository implements ICategoryRepository {
     return (rows[0] as ICategory) || null;
   }
 
-  async create(data: Omit<ICategory, 'id' | 'deleted_at' | 'created_at' | 'updated_at'>): Promise<ICategory> {
+  async create(data: Omit<ICategory, 'id' | 'deleted_at' | 'created_at' | 'updated_at' | 'product_count'>): Promise<ICategory> {
     const [result] = await db.query<ResultSetHeader>(
       'INSERT INTO categories (name, icon, image_filename, parent_id, sort_order) VALUES (?, ?, ?, ?, ?)',
       [data.name, data.icon ?? null, data.image_filename ?? null, data.parent_id ?? null, data.sort_order]
@@ -27,7 +27,7 @@ export class CategoryMysqlRepository implements ICategoryRepository {
     return (await this.findById(result.insertId))!;
   }
 
-  async update(id: number, data: Partial<Omit<ICategory, 'id' | 'created_at' | 'updated_at'>>): Promise<ICategory | null> {
+  async update(id: number, data: Partial<Omit<ICategory, 'id' | 'created_at' | 'updated_at' | 'product_count'>>): Promise<ICategory | null> {
     const ALLOWED = ['name', 'icon', 'image_filename', 'parent_id', 'sort_order', 'deleted_at'];
     const entries = Object.entries(data).filter(([k]) => ALLOWED.includes(k));
     if (entries.length === 0) return this.findById(id);

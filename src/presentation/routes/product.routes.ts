@@ -21,6 +21,7 @@ export async function productRoutes(app: FastifyInstance) {
   app.get('/products/:id', { preHandler: [optionalAuthenticate] }, ctrl.getById);
 
   // Admin
+  app.get('/products/export/csv', { preHandler: [authenticate, requireRole('admin')] }, ctrl.exportCsv);
   app.post('/products', { preHandler: [authenticate, requireRole('admin')] }, ctrl.create);
   app.put('/products/:id', { preHandler: [authenticate, requireRole('admin')] }, ctrl.update);
   app.delete('/products/:id', { preHandler: [authenticate, requireRole('admin')] }, ctrl.softDelete);

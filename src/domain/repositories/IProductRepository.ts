@@ -28,6 +28,29 @@ export interface IProductStoreData {
   in_stock: boolean;
 }
 
+/** One flattened catalog row for the admin CSV export. */
+export interface IProductExportRow {
+  barcode: string;
+  name: string;
+  category_id: number;
+  primary_category: string | null;
+  /** All category names for the product. */
+  categories: string[];
+  brand: string | null;
+  unit: string | null;
+  weight: number | null;
+  supplier: string | null;
+  description: string | null;
+  is_active: boolean;
+  is_featured: boolean;
+  /** Store price; null when no store was requested or no pricing row exists. */
+  price_nzd: number | null;
+  /** Store stock; null when no store was requested. */
+  stock_quantity: number | null;
+  /** Image filenames, ordered; the service maps them to public URLs. */
+  image_filenames: string[];
+}
+
 export interface IProductRepository {
   findAll(filters: ProductListFilters): Promise<{ products: IProduct[]; total: number }>;
   findById(id: number): Promise<IProduct | null>;
@@ -47,4 +70,9 @@ export interface IProductRepository {
   getImages(productId: number): Promise<IProductImage[]>;
   findFavoritedIds(customerId: number, productIds: number[]): Promise<number[]>;
   findBrands(): Promise<string[]>;
+  /**
+   * Full non-deleted catalog (active and inactive) for CSV export, resolved in
+   * a fixed number of bulk queries — never per-product.
+   */
+  findAllForExport(storeId?: number): Promise<IProductExportRow[]>;
 }

@@ -1,8 +1,8 @@
 import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import { db } from '../database/connection';
 import { IProduct, IProductImage } from '../../domain/entities/Product';
-import { IProductRepository, IProductStoreData, ProductListFilters } from '../../domain/repositories/IProductRepository';
-import { resolveBrandId, syncProductCategories } from '../products/productWriteHelpers';
+import { IProductExportRow, IProductRepository, IProductStoreData, ProductListFilters } from '../../domain/repositories/IProductRepository';
+import { categoryIdsForProduct, recountCategories, resolveBrandId, syncProductCategories } from '../products/productWriteHelpers';
 
 export class ProductMysqlRepository implements IProductRepository {
   async findAll(filters: ProductListFilters): Promise<{ products: IProduct[]; total: number }> {
@@ -192,7 +192,8 @@ export class ProductMysqlRepository implements IProductRepository {
       'INSERT INTO products (barcode, name, description, category_id, brand, brand_id, unit, weight, supplier, is_active, is_featured) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [data.barcode, data.name, data.description ?? null, data.category_id, brand.name, brand.id, data.unit ?? null, data.weight ?? null, data.supplier ?? null, data.is_active ? 1 : 0, data.is_featured ? 1 : 0]
     );
-    await syncProductCategories(db, result.insertId, data.category_id, data.category_ids);
+    const touched = await syncProductCategories(db, result.insertId, data.category_id, data.category_ids);
+    await recountCategories(db, touched);
     return (await this.findById(result.insertId))!;
   }
 
@@ -211,7 +212,14 @@ export class ProductMysqlRepository implements IProductRepository {
     }
     if (data.category_ids !== undefined || data.category_id !== undefined) {
       const [cur] = await db.query<RowDataPacket[]>('SELECT category_id FROM products WHERE id = ?', [id]);
-      if (cur[0]) await syncProductCategories(db, id, cur[0].category_id, data.category_ids);
+      if (cur[0]) {
+        const touched = await syncProductCategories(db, id, cur[0].category_id, data.category_ids);
+        await recountCategories(db, touched);
+      }
+    } else if ('is_active' in data || 'deleted_at' in data) {
+      // Category set unchanged, but activating/deactivating the product moves
+      // it in or out of every badge it appears in.
+      await recountCategories(db, await categoryIdsForProduct(db, id));
     }
     return this.findById(id);
   }
@@ -227,10 +235,14 @@ export class ProductMysqlRepository implements IProductRepository {
   }
 
   async softDelete(id: number): Promise<void> {
+    // Read the memberships before the delete — the join rows survive the soft
+    // delete, but grab them up front so the recount can't race a re-link.
+    const affected = await categoryIdsForProduct(db, id);
     await db.query(
       'UPDATE products SET is_active = 0, deleted_at = NOW(), updated_at = NOW() WHERE id = ?',
       [id]
     );
+    await recountCategories(db, affected);
   }
 
   async addImage(productId: number, filename: string, sortOrder: number): Promise<IProductImage> {
@@ -292,6 +304,98 @@ export class ProductMysqlRepository implements IProductRepository {
       `SELECT name AS brand FROM brands WHERE deleted_at IS NULL ORDER BY name ASC`,
     );
     return (rows as RowDataPacket[]).map(r => r.brand as string);
+  }
+
+  /**
+   * Bulk catalog read for the admin CSV export: 4 fixed queries (products,
+   * categories, images, store price+stock) grouped in memory, so the row count
+   * never drives the query count.
+   */
+  async findAllForExport(storeId?: number): Promise<IProductExportRow[]> {
+    const [productRows] = await db.query<RowDataPacket[]>(
+      `SELECT p.id, p.barcode, p.name, p.description, p.category_id,
+              p.brand, p.unit, p.weight, p.supplier, p.is_active, p.is_featured,
+              c.name AS primary_category
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       WHERE p.deleted_at IS NULL
+       ORDER BY p.id ASC`,
+    );
+    if (productRows.length === 0) return [];
+
+    const [categoryRows] = await db.query<RowDataPacket[]>(
+      `SELECT pc.product_id, c.name
+       FROM product_categories pc
+       INNER JOIN categories c ON c.id = pc.category_id
+       INNER JOIN products p ON p.id = pc.product_id AND p.deleted_at IS NULL
+       ORDER BY pc.product_id ASC, c.name ASC`,
+    );
+    const [imageRows] = await db.query<RowDataPacket[]>(
+      `SELECT pi.product_id, pi.filename, pi.url
+       FROM product_images pi
+       INNER JOIN products p ON p.id = pi.product_id AND p.deleted_at IS NULL
+       ORDER BY pi.product_id ASC, pi.sort_order ASC, pi.id ASC`,
+    );
+
+    const categoriesByProduct = new Map<number, string[]>();
+    for (const r of categoryRows) {
+      const list = categoriesByProduct.get(r.product_id as number);
+      if (list) list.push(r.name as string);
+      else categoriesByProduct.set(r.product_id as number, [r.name as string]);
+    }
+
+    // `url` wins when the row carries an absolute/CDN link; otherwise the
+    // filename is mapped to a public URL by the application layer.
+    const imagesByProduct = new Map<number, string[]>();
+    for (const r of imageRows) {
+      const value = (r.url as string | null) || (r.filename as string | null);
+      if (!value) continue;
+      const list = imagesByProduct.get(r.product_id as number);
+      if (list) list.push(value);
+      else imagesByProduct.set(r.product_id as number, [value]);
+    }
+
+    const priceByProduct = new Map<number, number>();
+    const stockByProduct = new Map<number, number>();
+    if (storeId) {
+      const [storeRows] = await db.query<RowDataPacket[]>(
+        `SELECT p.id AS product_id, sp.price_nzd, ps.quantity
+         FROM products p
+         LEFT JOIN store_pricing sp ON sp.product_id = p.id AND sp.store_id = ?
+         LEFT JOIN product_stock ps ON ps.product_id = p.id AND ps.store_id = ?
+         WHERE p.deleted_at IS NULL`,
+        [storeId, storeId],
+      );
+      for (const r of storeRows) {
+        if (r.price_nzd !== null && r.price_nzd !== undefined) {
+          priceByProduct.set(r.product_id as number, Number(r.price_nzd));
+        }
+        stockByProduct.set(r.product_id as number, Number(r.quantity ?? 0));
+      }
+    }
+
+    return productRows.map(p => {
+      const id = p.id as number;
+      const primary = (p.primary_category as string | null) ?? null;
+      const categories = categoriesByProduct.get(id) ?? (primary ? [primary] : []);
+      return {
+        barcode: p.barcode as string,
+        name: p.name as string,
+        category_id: p.category_id as number,
+        primary_category: primary,
+        categories,
+        brand: (p.brand as string | null) ?? null,
+        unit: (p.unit as string | null) ?? null,
+        weight: p.weight === null || p.weight === undefined ? null : Number(p.weight),
+        supplier: (p.supplier as string | null) ?? null,
+        description: (p.description as string | null) ?? null,
+        is_active: Boolean(p.is_active),
+        is_featured: Boolean(p.is_featured),
+        price_nzd: storeId ? priceByProduct.get(id) ?? null : null,
+        stock_quantity: storeId ? stockByProduct.get(id) ?? 0 : null,
+        image_filenames: imagesByProduct.get(id) ?? [],
+      };
+    });
   }
 
   async isNotifyRequested(productId: number, customerId: number, storeId: number): Promise<boolean> {

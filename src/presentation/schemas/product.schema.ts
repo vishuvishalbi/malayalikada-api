@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+/**
+ * Canonical units offered by the admin product form. Advisory only — see the
+ * note on `unit` below for why this is not enforced as a Zod enum.
+ */
+export const PRODUCT_UNITS = ['kg', 'g', 'ml', 'L', 'pcs'] as const;
+export type ProductUnit = (typeof PRODUCT_UNITS)[number];
+
 export const createProductSchema = z.object({
   barcode: z.string().min(1).max(50),
   name: z.string().min(1).max(200),
@@ -9,6 +16,13 @@ export const createProductSchema = z.object({
   category_ids: z.array(z.number().int().positive()).max(20).optional(),
   brand: z.string().max(100).nullable().optional(),
   brand_id: z.number().int().positive().nullable().optional(),
+  /**
+   * Unit of sale. The admin UI offers the canonical set in {@link PRODUCT_UNITS},
+   * but this stays free-text on purpose: ~2900 catalog rows carry legacy
+   * values ("500g", "1 L", junk) and an enum here would make every edit of
+   * those products fail. Validation is length-only; normalisation is a
+   * separate data migration.
+   */
   unit: z.string().max(50).optional(),
   weight: z.number().positive().optional(),
   supplier: z.string().max(150).optional(),
@@ -54,3 +68,9 @@ export const productQuerySchema = z
     q => q.min_price === undefined || q.max_price === undefined || q.min_price <= q.max_price,
     { message: 'min_price must not exceed max_price', path: ['min_price'] }
   );
+
+/** Query params for `GET /products/export/csv`. */
+export const productExportQuerySchema = z.object({
+  /** When given, the export includes that store's price and stock columns. */
+  store_id: z.coerce.number().int().positive().optional(),
+});

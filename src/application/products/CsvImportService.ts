@@ -4,7 +4,7 @@ import { LocalFileStorage } from '../../infrastructure/storage/LocalFileStorage'
 import { csvCell } from '../../shared/csv';
 import { db } from '../../infrastructure/database/connection';
 import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
-import { resolveBrandId, ensurePrimaryCategory } from '../../infrastructure/products/productWriteHelpers';
+import { resolveBrandId, ensurePrimaryCategory, recountCategories, categoryIdsForProduct } from '../../infrastructure/products/productWriteHelpers';
 import { ValidationError } from '../../shared/errors/AppError';
 
 export const MAX_IMPORT_ROWS = 5000;
@@ -23,6 +23,7 @@ export class CsvImportService {
 
     let rowsOk = 0;
     const rowErrors = [...errors];
+    const touchedCategories = new Set<number>();
     const conn = await db.getConnection();
     try {
       await conn.beginTransaction();
@@ -42,6 +43,9 @@ export class CsvImportService {
           let productId: number;
           if ((existing as any[]).length > 0) {
             productId = (existing as any[])[0].id as number;
+            // An upsert may move the product between categories — the one it
+            // leaves needs recounting as much as the one it joins.
+            for (const id of await categoryIdsForProduct(conn, productId)) touchedCategories.add(id);
             await conn.query(
               'UPDATE products SET name=?, description=?, category_id=?, brand=?, brand_id=?, unit=?, weight=?, supplier=?, updated_at=NOW() WHERE id=?',
               [row.name, row.description ?? null, categoryId, brandName, brandId, row.unit ?? null, weight, row.supplier ?? null, productId]
@@ -54,11 +58,14 @@ export class CsvImportService {
             productId = ins.insertId;
           }
           await ensurePrimaryCategory(conn, productId, categoryId);
+          touchedCategories.add(categoryId);
           rowsOk++;
         } catch (e: any) {
           rowErrors.push({ line: lineNum, error: e.message });
         }
       }
+      // One recount for the whole import rather than per row.
+      await recountCategories(conn, [...touchedCategories]);
       await conn.commit();
     } catch (e) {
       await conn.rollback();

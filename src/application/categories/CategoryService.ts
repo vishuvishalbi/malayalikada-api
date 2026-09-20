@@ -15,6 +15,7 @@ export class CategoryService {
       ...c,
       image_url: c.image_filename ? this.storage.getUrl(c.image_filename) : null,
       children: [] as ICategoryTree[],
+      total_product_count: c.product_count,
     }));
     const map = new Map(withUrls.map(c => [c.id, c]));
     const roots: ICategoryTree[] = [];
@@ -25,6 +26,10 @@ export class CategoryService {
         roots.push(cat as ICategoryTree);
       }
     }
+    // Roll descendant counts up so a parent's badge reflects everything a tap
+    // on it would actually list. Post-order, so each child is total before its
+    // parent reads it; iterative to stay safe on a deep or cyclic parent chain.
+    for (const root of roots) rollUpCounts(root);
     return roots;
   }
 
@@ -68,5 +73,30 @@ export class CategoryService {
       await this.storage.delete(existing.image_filename);
       await this.repo.update(id, { image_filename: null });
     }
+  }
+}
+
+/**
+ * Sums `product_count` over each node's subtree into `total_product_count`.
+ * Iterative post-order: an explicit stack avoids blowing the call stack on a
+ * pathological hierarchy, and the visited guard means a parent_id cycle
+ * (possible — parent_id has no such constraint) terminates instead of hanging.
+ */
+function rollUpCounts(root: ICategoryTree): void {
+  const order: ICategoryTree[] = [];
+  const seen = new Set<number>();
+  const stack: ICategoryTree[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    order.push(node);
+    stack.push(...node.children);
+  }
+  // `order` is parents-before-children, so walk it backwards.
+  for (let i = order.length - 1; i >= 0; i--) {
+    const node = order[i];
+    node.total_product_count =
+      node.product_count + node.children.reduce((sum, c) => sum + c.total_product_count, 0);
   }
 }

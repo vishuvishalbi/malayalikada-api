@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { ProductService } from '../../application/products/ProductService';
-import { createProductSchema, updateProductSchema, productQuerySchema } from '../schemas/product.schema';
+import { createProductSchema, updateProductSchema, productQuerySchema, productExportQuerySchema } from '../schemas/product.schema';
 import { ValidationError } from '../../shared/errors/AppError';
 
 export class ProductController {
@@ -61,6 +61,17 @@ export class ProductController {
     const { store_id } = request.query as { store_id?: string };
     const items = await this.service.trending(store_id ? Number(store_id) : undefined, request.user?.sub);
     reply.send({ items });
+  };
+
+  exportCsv = async (request: FastifyRequest, reply: FastifyReply) => {
+    const parsed = productExportQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw new ValidationError('Invalid query', parsed.error.flatten());
+    const csv = await this.service.exportCsv(parsed.data.store_id);
+    const filename = `products-${new Date().toISOString().slice(0, 10)}.csv`;
+    reply
+      .header('Content-Type', 'text/csv')
+      .header('Content-Disposition', `attachment; filename="${filename}"`);
+    reply.send(csv);
   };
 
   brands = async (_request: FastifyRequest, reply: FastifyReply) => {
