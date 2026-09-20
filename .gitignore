@@ -6,3 +6,4 @@ uploads/
 *.db
 logs/
 scripts/fix-weights-kg.log.json
+logs/**
