@@ -218,6 +218,8 @@ export class OrderMysqlRepository implements IOrderRepository {
       `SELECT o.*,
               ${CUSTOMER_NAME_EXPR} AS customer_name,
               c.identifier AS customer_identifier,
+              c.phone_number AS customer_phone,
+              c.email AS customer_email,
               s.name AS store_name
        FROM orders o
        JOIN customers c ON c.id = o.customer_id

@@ -17,7 +17,11 @@ export interface OrderRow extends IOrder {
 
 export interface AdminOrderDetail extends IOrder {
   customer_name: string;
+  /** Login identifier (email or phone, whichever they signed up with). */
   customer_identifier: string;
+  /** Dedicated phone column — null for accounts that only have an email. */
+  customer_phone: string | null;
+  customer_email: string | null;
   store_name: string;
   items: (IOrderItem & { name: string })[];
 }
