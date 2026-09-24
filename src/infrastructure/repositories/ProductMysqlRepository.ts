@@ -4,6 +4,16 @@ import { IProduct, IProductImage } from '../../domain/entities/Product';
 import { IProductExportRow, IProductRepository, IProductStoreData, ProductListFilters } from '../../domain/repositories/IProductRepository';
 import { categoryIdsForProduct, recountCategories, resolveBrandId, syncProductCategories } from '../products/productWriteHelpers';
 
+/**
+ * POS names lead with the brand ("3ROSE JEERAKASALA 5KG") while the client
+ * displays the product word first ("Jeerakasala"), so name sorts order by the
+ * name with its brand prefix removed. Collation keeps this case-insensitive.
+ */
+const SORT_NAME_SQL = `CASE
+  WHEN p.brand IS NOT NULL AND p.brand <> '' AND p.name LIKE CONCAT(p.brand, ' %')
+  THEN TRIM(SUBSTRING(p.name, CHAR_LENGTH(p.brand) + 1))
+  ELSE p.name END`;
+
 export class ProductMysqlRepository implements IProductRepository {
   async findAll(filters: ProductListFilters): Promise<{ products: IProduct[]; total: number }> {
     const conditions: string[] = ['p.deleted_at IS NULL'];
@@ -90,22 +100,23 @@ export class ProductMysqlRepository implements IProductRepository {
    * rather than clustering at the top as NULLs.
    */
   private buildOrderBy(filters: ProductListFilters): string {
+    const byName = (dir: 'ASC' | 'DESC') => `${SORT_NAME_SQL} ${dir}, p.id ASC`;
     switch (filters.sort) {
       case 'newest':
         return 'p.created_at DESC, p.id DESC';
       case 'name_desc':
-        return 'p.name DESC, p.id ASC';
+        return byName('DESC');
       case 'price_asc':
         return filters.store_id
           ? 'sp.price_nzd IS NULL, sp.price_nzd ASC, p.id ASC'
-          : 'p.name ASC, p.id ASC';
+          : byName('ASC');
       case 'price_desc':
         return filters.store_id
           ? 'sp.price_nzd IS NULL, sp.price_nzd DESC, p.id ASC'
-          : 'p.name ASC, p.id ASC';
+          : byName('ASC');
       case 'name_asc':
       default:
-        return 'p.name ASC, p.id ASC';
+        return byName('ASC');
     }
   }
 
