@@ -25,6 +25,9 @@ export const config = {
   jwtSecret: required('JWT_SECRET'),
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+  // Public by design; served to the app via GET /settings so key rotation
+  // needs no app release.
+  stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
   corsOrigin: corsOrigin(),
   enableDocs: process.env.ENABLE_DOCS === 'true' || !isProd,
   uploadsDir: process.env.UPLOADS_DIR || './uploads',
