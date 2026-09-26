@@ -367,10 +367,11 @@ export class ProductMysqlRepository implements IProductRepository {
     }
 
     const priceByProduct = new Map<number, number>();
+    const costByProduct = new Map<number, number>();
     const stockByProduct = new Map<number, number>();
     if (storeId) {
       const [storeRows] = await db.query<RowDataPacket[]>(
-        `SELECT p.id AS product_id, sp.price_nzd, ps.quantity
+        `SELECT p.id AS product_id, sp.price_nzd, sp.cost_nzd, ps.quantity
          FROM products p
          LEFT JOIN store_pricing sp ON sp.product_id = p.id AND sp.store_id = ?
          LEFT JOIN product_stock ps ON ps.product_id = p.id AND ps.store_id = ?
@@ -380,6 +381,9 @@ export class ProductMysqlRepository implements IProductRepository {
       for (const r of storeRows) {
         if (r.price_nzd !== null && r.price_nzd !== undefined) {
           priceByProduct.set(r.product_id as number, Number(r.price_nzd));
+        }
+        if (r.cost_nzd !== null && r.cost_nzd !== undefined) {
+          costByProduct.set(r.product_id as number, Number(r.cost_nzd));
         }
         stockByProduct.set(r.product_id as number, Number(r.quantity ?? 0));
       }
@@ -403,6 +407,7 @@ export class ProductMysqlRepository implements IProductRepository {
         is_active: Boolean(p.is_active),
         is_featured: Boolean(p.is_featured),
         price_nzd: storeId ? priceByProduct.get(id) ?? null : null,
+        cost_nzd: storeId ? costByProduct.get(id) ?? null : null,
         stock_quantity: storeId ? stockByProduct.get(id) ?? 0 : null,
         image_filenames: imagesByProduct.get(id) ?? [],
       };

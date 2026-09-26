@@ -45,6 +45,7 @@ export interface IProductExportRow {
   is_featured: boolean;
   /** Store price; null when no store was requested or no pricing row exists. */
   price_nzd: number | null;
+  cost_nzd: number | null;
   /** Store stock; null when no store was requested. */
   stock_quantity: number | null;
   /** Image filenames, ordered; the service maps them to public URLs. */

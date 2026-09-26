@@ -8,7 +8,7 @@ import { NotFoundError, ValidationError, ConflictError } from '../../shared/erro
 const PRODUCT_EXPORT_COLUMNS = [
   'barcode', 'name', 'category_id', 'primary_category', 'categories', 'brand',
   'unit', 'weight', 'supplier', 'description', 'is_active', 'is_featured',
-  'price_nzd', 'stock_quantity', 'image_urls',
+  'price_nzd', 'cost_nzd', 'stock_quantity', 'image_urls',
 ] as const;
 
 export class ProductService {
@@ -174,6 +174,7 @@ export class ProductService {
         r.is_active ? 'true' : 'false',
         r.is_featured ? 'true' : 'false',
         r.price_nzd,
+        r.cost_nzd,
         r.stock_quantity,
         r.image_filenames.map(f => this.toPublicUrl(f)).join('|'),
       ].map(csvCell).join(','));

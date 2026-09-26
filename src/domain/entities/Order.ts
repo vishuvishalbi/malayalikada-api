@@ -23,5 +23,7 @@ export interface IOrderItem {
   product_id: number;
   quantity: number;
   unit_price_nzd: number;
+  /** Cost snapshot taken at order time (from store_pricing.cost_nzd); null if unknown. */
+  unit_cost_nzd?: number | null;
   reserved_at: Date | null;
 }

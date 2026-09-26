@@ -18,12 +18,15 @@ export class PricingMysqlRepository {
     return rows as IStorePricing[];
   }
 
-  async upsert(productId: number, storeId: number, priceNzd: number, effectiveDate: string): Promise<IStorePricing> {
+  /** `costNzd` undefined leaves any existing cost untouched (COALESCE), so price-only edits never wipe it. */
+  async upsert(productId: number, storeId: number, priceNzd: number, effectiveDate: string, costNzd?: number): Promise<IStorePricing> {
     await db.query(
-      `INSERT INTO store_pricing (product_id, store_id, price_nzd, effective_date)
-       VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE price_nzd = VALUES(price_nzd), effective_date = VALUES(effective_date), updated_at = NOW()`,
-      [productId, storeId, priceNzd, effectiveDate]
+      `INSERT INTO store_pricing (product_id, store_id, price_nzd, cost_nzd, effective_date)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE price_nzd = VALUES(price_nzd),
+                               cost_nzd = COALESCE(VALUES(cost_nzd), cost_nzd),
+                               effective_date = VALUES(effective_date), updated_at = NOW()`,
+      [productId, storeId, priceNzd, costNzd ?? null, effectiveDate]
     );
     const [rows] = await db.query<RowDataPacket[]>(
       'SELECT * FROM store_pricing WHERE product_id = ? AND store_id = ?',

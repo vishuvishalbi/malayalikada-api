@@ -59,7 +59,8 @@ export function parseShopifyCsv(buffer: Buffer): ShopifyParseResult {
     const lineNum = i + 2;
 
     const sku = (rec['Variant SKU'] || '').trim();
-    const barcode = (rec['Variant Barcode'] || sku || rec['Handle'] || '').trim();
+    // Shopify exports label the column 'Variant Barcodes' (plural); older ones use the singular.
+    const barcode = (rec['Variant Barcodes'] || rec['Variant Barcode'] || sku || rec['Handle'] || '').trim();
     if (!barcode) {
       errors.push({ line: lineNum, error: `Row skipped: no barcode, SKU or Handle for "${rec['Handle']}"` });
       return;

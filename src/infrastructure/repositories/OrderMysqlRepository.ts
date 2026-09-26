@@ -42,8 +42,9 @@ export class OrderMysqlRepository implements IOrderRepository {
 
       for (const item of items) {
         await conn.query(
-          'INSERT INTO order_items (order_id, product_id, quantity, unit_price_nzd) VALUES (?, ?, ?, ?)',
-          [orderId, item.product_id, item.quantity, item.unit_price_nzd]
+          `INSERT INTO order_items (order_id, product_id, quantity, unit_price_nzd, unit_cost_nzd)
+           VALUES (?, ?, ?, ?, (SELECT cost_nzd FROM store_pricing WHERE product_id = ? AND store_id = ?))`,
+          [orderId, item.product_id, item.quantity, item.unit_price_nzd, item.product_id, order.store_id]
         );
       }
 
@@ -93,8 +94,9 @@ export class OrderMysqlRepository implements IOrderRepository {
 
       for (const item of items) {
         await conn.query(
-          'INSERT INTO order_items (order_id, product_id, quantity, unit_price_nzd, reserved_at) VALUES (?, ?, ?, ?, NOW())',
-          [orderId, item.product_id, item.quantity, item.unit_price_nzd]
+          `INSERT INTO order_items (order_id, product_id, quantity, unit_price_nzd, unit_cost_nzd, reserved_at)
+           VALUES (?, ?, ?, ?, (SELECT cost_nzd FROM store_pricing WHERE product_id = ? AND store_id = ?), NOW())`,
+          [orderId, item.product_id, item.quantity, item.unit_price_nzd, item.product_id, order.store_id]
         );
       }
 

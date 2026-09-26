@@ -7,7 +7,7 @@ export class PricingService {
     return this.repo.findAll(filters);
   }
 
-  upsert(productId: number, storeId: number, priceNzd: number, effectiveDate: string) {
-    return this.repo.upsert(productId, storeId, priceNzd, effectiveDate);
+  upsert(productId: number, storeId: number, priceNzd: number, effectiveDate: string, costNzd?: number) {
+    return this.repo.upsert(productId, storeId, priceNzd, effectiveDate, costNzd);
   }
 }

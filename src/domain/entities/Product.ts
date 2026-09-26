@@ -46,6 +46,7 @@ export interface IStorePricing {
   product_id: number;
   store_id: number;
   price_nzd: number;
+  cost_nzd?: number | null;
   effective_date: string;
   product_name?: string;
 }

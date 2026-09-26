@@ -10,6 +10,8 @@ import { ICsvImportLog } from '../../domain/entities/CsvImportLog';
 import { ValidationError } from '../../shared/errors/AppError';
 
 export const MAX_IMPORT_ROWS = 5000;
+/** Bucket for rows with no Type / Product Category / Tags so they still import and can be re-categorised in admin. */
+export const UNCATEGORIZED = 'Uncategorized';
 
 export class ShopifyCsvImportService {
   private logs = new CsvImportLogRepository();
@@ -21,6 +23,7 @@ export class ShopifyCsvImportService {
     storeId: number,
     staffId: number,
     inventoryBuffer?: Buffer,
+    opts: { skipRecount?: boolean } = {},
   ): Promise<ICsvImportLog> {
     const { rows, errors } = parseShopifyCsv(productBuffer);
 
@@ -43,17 +46,9 @@ export class ShopifyCsvImportService {
         const row = rows[i];
         const lineNum = i + 2;
         try {
-          // 1. Category: derive short name from last '>' segment. A row with no
-          // category is reported rather than swept into a catch-all bucket —
-          // silently defaulting is what left the catalogue uncategorised.
-          const shortName = row.categoryPath.split('>').pop()?.trim() ?? '';
-          if (!shortName) {
-            rowErrors.push({
-              line: lineNum,
-              error: `Row skipped: no category (set Type, Product Category or Tags) for "${row.name}"`,
-            });
-            continue;
-          }
+          // 1. Category: derive short name from last '>' segment; rows with no
+          // category info land in UNCATEGORIZED rather than being dropped.
+          const shortName = (row.categoryPath.split('>').pop()?.trim() ?? '') || UNCATEGORIZED;
 
           const [catRows] = await conn.query<RowDataPacket[]>(
             'SELECT id FROM categories WHERE name = ? AND deleted_at IS NULL LIMIT 1',
@@ -139,8 +134,9 @@ export class ShopifyCsvImportService {
           rowErrors.push({ line: lineNum, error: e.message });
         }
       }
-      // One recount for the whole import rather than per row.
-      await recountCategories(conn, [...touchedCategories]);
+      // One recount for the whole import rather than per row. Callers importing in
+      // parallel chunks skip it (it scans product_categories and deadlocks) and recount once at the end.
+      if (!opts.skipRecount) await recountCategories(conn, [...touchedCategories]);
       await conn.commit();
     } catch (e) {
       await conn.rollback();

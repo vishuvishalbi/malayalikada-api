@@ -17,7 +17,7 @@ export class PricingController {
     if (!parsed.success) throw new ValidationError('Invalid input', parsed.error.flatten());
     reply.send(await this.service.upsert(
       parsed.data.product_id, parsed.data.store_id,
-      parsed.data.price_nzd, parsed.data.effective_date,
+      parsed.data.price_nzd, parsed.data.effective_date, parsed.data.cost_nzd,
     ));
   };
 
@@ -27,7 +27,7 @@ export class PricingController {
     if (!parsed.success) throw new ValidationError('Invalid input', parsed.error.flatten());
     reply.send(await this.service.upsert(
       Number(productId), Number(storeId),
-      parsed.data.price_nzd, parsed.data.effective_date,
+      parsed.data.price_nzd, parsed.data.effective_date, parsed.data.cost_nzd,
     ));
   };
 }
