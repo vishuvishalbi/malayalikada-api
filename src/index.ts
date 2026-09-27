@@ -7,7 +7,7 @@ import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import staticFiles from '@fastify/static';
 import helmet from '@fastify/helmet';
-import path from 'path';
+import fs from 'fs';
 import { config } from './shared/config';
 import { AppError } from './shared/errors/AppError';
 import swaggerPlugin from './infrastructure/plugins/swagger';
@@ -55,8 +55,11 @@ app.register(jwt, {
 });
 app.register(rateLimit, { global: false });
 app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
+// Must be the same directory LocalFileStorage writes to; create it up front
+// because @fastify/static rejects a missing root.
+fs.mkdirSync(config.uploadsDir, { recursive: true });
 app.register(staticFiles, {
-  root: path.resolve(process.cwd(), 'uploads'),
+  root: config.uploadsDir,
   prefix: '/uploads/',
 });
 
@@ -110,7 +113,8 @@ app.register(notifyRequestRoutes, { prefix: '/api/v1' });
 app.register(favoriteRoutes, { prefix: '/api/v1' });
 app.register(deliverySlabRoutes, { prefix: '/api/v1' });
 
-app.get('/health', async () => ({ status: 'ok' }));
+const startedAt = new Date().toISOString();
+app.get('/health', async () => ({ status: 'ok', started_at: startedAt }));
 
 const start = async () => {
   try {

@@ -1,3 +1,6 @@
+import os from 'os';
+import path from 'path';
+
 function required(key: string): string {
   const val = process.env[key];
   if (!val) throw new Error(`Missing required env var: ${key}`);
@@ -5,6 +8,20 @@ function required(key: string): string {
 }
 
 const isProd = process.env.NODE_ENV === 'production';
+const isLocal = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+
+/**
+ * Absolute uploads directory. Hosted deploys replace the app directory, which
+ * wiped every uploaded image, so outside local dev the default lives in the
+ * account home directory instead. UPLOADS_DIR overrides either default.
+ */
+function uploadsDir(): string {
+  const configured = process.env.UPLOADS_DIR;
+  if (configured) return path.resolve(process.cwd(), configured);
+  return isLocal
+    ? path.resolve(process.cwd(), 'uploads')
+    : path.join(os.homedir(), 'malayalikada_uploads');
+}
 
 function corsOrigin(): string {
   const val = process.env.CORS_ORIGIN;
@@ -30,5 +47,5 @@ export const config = {
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
   corsOrigin: corsOrigin(),
   enableDocs: process.env.ENABLE_DOCS === 'true' || !isProd,
-  uploadsDir: process.env.UPLOADS_DIR || './uploads',
+  uploadsDir: uploadsDir(),
 } as const;

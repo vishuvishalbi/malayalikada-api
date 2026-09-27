@@ -3,7 +3,7 @@ import path from 'path';
 import { config } from '../../shared/config';
 
 export class LocalFileStorage {
-  private uploadsDir = path.resolve(process.cwd(), config.uploadsDir);
+  private uploadsDir = config.uploadsDir;
 
   async save(filename: string, buffer: Buffer): Promise<void> {
     await fs.mkdir(this.uploadsDir, { recursive: true });

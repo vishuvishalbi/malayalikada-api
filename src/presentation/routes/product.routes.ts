@@ -1,3 +1,4 @@
+import { config } from '../../shared/config';
 import { FastifyInstance } from 'fastify';
 import { ProductController } from '../controllers/product.controller';
 import { ProductService } from '../../application/products/ProductService';
@@ -50,7 +51,7 @@ export async function productRoutes(app: FastifyInstance) {
     reply.header('Content-Type', 'text/csv').header('Content-Disposition', `attachment; filename="${log.error_report_filename}"`);
     const fs = await import('fs/promises');
     const path = await import('path');
-    const content = await fs.readFile(path.resolve(process.cwd(), 'uploads', log.error_report_filename));
+    const content = await fs.readFile(path.join(config.uploadsDir, log.error_report_filename));
     reply.send(content);
   });
 
