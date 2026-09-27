@@ -95,6 +95,8 @@ def read_rows(path: Path, url_col: Optional[str], key_col: Optional[str]) -> lis
             elif handle:
                 last_handle, last_keys = handle, []
             lookup = keys + ([handle] if handle else [])
+            # products.barcode is VARCHAR(50): long handles are stored truncated
+            lookup += [k[:50] for k in lookup if len(k) > 50]
             if url.startswith(("http://", "https://")):
                 rows.append(Row(i, url, (keys or [handle] or [None])[0], lookup))
     return rows
@@ -187,6 +189,9 @@ class ApiClient:
                 return p
         return None
 
+    def delete_image(self, product_id: int, image_id: int) -> None:
+        self._request("DELETE", f"/products/{product_id}/images/{image_id}")
+
     def upload_image(self, product_id: int, file: Path) -> dict:
         boundary = f"----mk{uuid.uuid4().hex}"
         ctype = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
@@ -223,7 +228,8 @@ def process(row: Row, dest: Path, args, api: Optional[ApiClient]) -> Result:
             res.skipped = f"product not found: {' / '.join(row.lookup)}"
             return res
         images = product.get("images") or []
-        if any(img.get("url") == row.url for img in images):
+        external = next((img for img in images if img.get("url") == row.url), None)
+        if external and not args.replace_external:
             res.skipped = "already attached"
             return res
         if len(images) >= MAX_IMAGES:
@@ -233,6 +239,10 @@ def process(row: Row, dest: Path, args, api: Optional[ApiClient]) -> Result:
             res.skipped = f"dry-run: would upload to product {product['id']}"
             return res
         api.upload_image(int(product["id"]), res.path)
+        if external:
+            # Local copy is in place; drop the external-URL row it replaces.
+            api.delete_image(int(product["id"]), int(external["id"]))
+            images.remove(external)
         images.append({"url": row.url})  # keep cache count in sync for subsequent rows
         res.uploaded = True
     except RuntimeError as e:
@@ -255,6 +265,8 @@ def main() -> int:
     ap.add_argument("--identifier", default=os.environ.get("API_USER"), help="admin login (or env API_USER)")
     ap.add_argument("--password", default=os.environ.get("API_PASS"), help="admin password (or env API_PASS)")
     ap.add_argument("--dry-run", action="store_true", help="with --upload: resolve products but do not upload")
+    ap.add_argument("--replace-external", action="store_true",
+                    help="with --upload: if the product already shows this URL as an external image, upload the local file and remove the external row")
     ap.add_argument("--report", type=Path, help="write per-row results CSV here")
     args = ap.parse_args()
 
