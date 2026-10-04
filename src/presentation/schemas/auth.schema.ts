@@ -18,6 +18,10 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1),
+});
+
 export const resetPasswordSchema = z.object({
   target_id: z.number().int().positive(),
   target_type: z.enum(['customer', 'staff']),

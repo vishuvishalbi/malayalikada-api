@@ -1,9 +1,12 @@
 import bcrypt from 'bcrypt';
-import { createHmac, randomInt } from 'node:crypto';
+import { createHmac, randomInt, randomUUID } from 'node:crypto';
 import { ICustomerRepository } from '../../domain/repositories/ICustomerRepository';
 import { IStaffRepository } from '../../domain/repositories/IStaffRepository';
+import { TokenUserType } from '../../domain/entities/AuthToken';
+import { isAnonymizedCustomer } from '../../domain/entities/Customer';
 import { UnauthorizedError, ConflictError, NotFoundError, ValidationError } from '../../shared/errors/AppError';
 import { config } from '../../shared/config';
+import { TokenService } from './TokenService';
 
 type Role = 'customer' | 'worker' | 'admin';
 
@@ -43,11 +46,44 @@ const usedCaptchaIds = new Set<string>();
 const hmac = (data: string) =>
   createHmac('sha256', config.jwtSecret).update(data).digest('base64url');
 
+/** Lifetime of a signed JWT, read from its own claims so it can't drift from the signer's expiresIn. */
+const ttlSecondsOf = (token: string): number => {
+  const { iat, exp } = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+  return exp - iat;
+};
+
 export class AuthService {
   constructor(
     private customers: ICustomerRepository,
     private staff: IStaffRepository,
+    private tokens: TokenService,
   ) {}
+
+  /** Signs a token carrying a fresh jti and registers it; a token that can't be registered is never returned. */
+  private async issueToken(
+    userType: TokenUserType,
+    id: number,
+    role: Role,
+    storeIds: number[],
+    signFn: (payload: object) => string,
+  ): Promise<string> {
+    const jti = randomUUID();
+    const token = signFn({ sub: id, role, storeIds, jti });
+    await this.tokens.issue(jti, userType, id, ttlSecondsOf(token));
+    if (userType === 'customer' && !(await this.isLiveCustomer(id))) {
+      // The account was deleted between the caller's read and the insert above (the deletion's
+      // DELETE gap-locks this user's token rows, so the insert waits and then lands): no live
+      // token may outlive the account.
+      await this.tokens.revoke(jti);
+      throw new UnauthorizedError('Account no longer exists');
+    }
+    return token;
+  }
+
+  private async isLiveCustomer(id: number): Promise<boolean> {
+    const customer = await this.customers.findById(id);
+    return !!customer && !isAnonymizedCustomer(customer);
+  }
 
   /// Stateless arithmetic captcha: captcha_id = `${exp}.${answerHash}.${sig}`,
   /// all HMAC-signed with the JWT secret — nothing stored server-side.
@@ -106,7 +142,7 @@ export class AuthService {
       preferred_store_id: null,
     });
 
-    const token = signFn({ sub: customer.id, role: 'customer', storeIds: [] });
+    const token = await this.issueToken('customer', customer.id, 'customer', [], signFn);
     return {
       token,
       user: { id: customer.id, name: `${customer.first_name} ${customer.last_name}`, role: 'customer' as const, preferredStoreId: customer.preferred_store_id, storeIds: [] },
@@ -131,11 +167,12 @@ export class AuthService {
   }
 
   async login(identifier: string, password: string, signFn: (payload: object) => string) {
-    const customer = await this.findCustomerForLogin(identifier);
+    const found = await this.findCustomerForLogin(identifier);
+    const customer = found && !isAnonymizedCustomer(found) ? found : null; // a deleted account is unknown, never a login
     if (customer) {
       const valid = await bcrypt.compare(password, customer.password_hash);
       if (!valid) throw new UnauthorizedError('Invalid credentials');
-      const token = signFn({ sub: customer.id, role: 'customer', storeIds: [] });
+      const token = await this.issueToken('customer', customer.id, 'customer', [], signFn);
       return {
         token,
         user: {
@@ -155,7 +192,7 @@ export class AuthService {
     if (!valid) throw new UnauthorizedError('Invalid credentials');
 
     const storeIds = staffUser.role === 'worker' ? await this.staff.getStoreIds(staffUser.id) : [];
-    const token = signFn({ sub: staffUser.id, role: staffUser.role, storeIds });
+    const token = await this.issueToken('staff', staffUser.id, staffUser.role as Role, storeIds, signFn);
     return {
       token,
       user: {
@@ -169,11 +206,13 @@ export class AuthService {
     };
   }
 
-  async me(userId: number, role: Role, signFn: (payload: object) => string) {
+  /** Issues a replacement token; the presented one (currentJti) is retired after a short grace period. */
+  async me(userId: number, role: Role, signFn: (payload: object) => string, currentJti?: string) {
     if (role === 'customer') {
       const customer = await this.customers.findById(userId);
-      if (!customer) throw new NotFoundError('User not found');
-      const token = signFn({ sub: customer.id, role: 'customer', storeIds: [] });
+      if (!customer || isAnonymizedCustomer(customer)) throw new NotFoundError('User not found');
+      const token = await this.issueToken('customer', customer.id, 'customer', [], signFn);
+      if (currentJti) await this.tokens.retire(currentJti);
       return {
         token,
         user: { id: customer.id, name: `${customer.first_name} ${customer.last_name}`, role: 'customer' as Role, preferredStoreId: customer.preferred_store_id, storeIds: [] },
@@ -184,7 +223,8 @@ export class AuthService {
     if (!staffUser) throw new NotFoundError('User not found');
     if (!staffUser.is_active) throw new UnauthorizedError('Account deactivated');
     const storeIds = staffUser.role === 'worker' ? await this.staff.getStoreIds(staffUser.id) : [];
-    const token = signFn({ sub: staffUser.id, role: staffUser.role, storeIds });
+    const token = await this.issueToken('staff', staffUser.id, staffUser.role as Role, storeIds, signFn);
+    if (currentJti) await this.tokens.retire(currentJti);
     return {
       token,
       user: { id: staffUser.id, name: staffUser.name, role: staffUser.role as Role, preferredStoreId: null, storeIds },
@@ -201,6 +241,8 @@ export class AuthService {
   async adminResetPassword(adminId: number, targetId: number, newPassword: string, targetType: 'customer' | 'staff') {
     const hash = await bcrypt.hash(newPassword, 10);
     if (targetType === 'customer') {
+      const target = await this.customers.findById(targetId);
+      if (!target || isAnonymizedCustomer(target)) throw new NotFoundError('Customer not found');
       await this.customers.update(targetId, { password_hash: hash });
     } else {
       await this.staff.update(targetId, { password_hash: hash });

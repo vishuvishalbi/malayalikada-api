@@ -1,3 +1,12 @@
+/** What a deleted account is renamed to; the row itself is kept so orders and reports still join to it. */
+export const ANONYMIZED_NAME = { first_name: 'Deleted', last_name: 'User' } as const;
+
+/** Unique per customer and not a valid email or mobile, so it frees the original login and can't collide with a real one. */
+export const anonymizedIdentifier = (customerId: number): string => `deleted:${customerId}`;
+
+export const isAnonymizedCustomer = (customer: Pick<ICustomer, 'id' | 'identifier'>): boolean =>
+  customer.identifier === anonymizedIdentifier(customer.id);
+
 export interface ICustomer {
   id: number;
   identifier: string;

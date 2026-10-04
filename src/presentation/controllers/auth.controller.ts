@@ -36,6 +36,7 @@ export class AuthController {
       request.user.sub,
       request.user.role,
       (payload) => (request.server.jwt.sign as (p: object) => string)(payload),
+      request.user.jti,
     );
     reply.send(result);
   };
@@ -45,6 +46,7 @@ export class AuthController {
       request.user.sub,
       request.user.role,
       (payload) => (request.server.jwt.sign as (p: object) => string)(payload),
+      request.user.jti,
     );
     reply.send({ token: result.token, user: result.user });
   };
