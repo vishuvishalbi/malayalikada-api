@@ -323,6 +323,11 @@ export class ProductMysqlRepository implements IProductRepository {
    * never drives the query count.
    */
   async findAllForExport(storeId?: number): Promise<IProductExportRow[]> {
+    // No store requested → first active store, so price/cost/stock never export blank.
+    if (!storeId) {
+      const [stores] = await db.query<RowDataPacket[]>('SELECT id FROM stores WHERE is_active = 1 ORDER BY id LIMIT 1');
+      storeId = stores[0]?.id as number | undefined;
+    }
     const [productRows] = await db.query<RowDataPacket[]>(
       `SELECT p.id, p.barcode, p.name, p.description, p.category_id,
               p.brand, p.unit, p.weight, p.supplier, p.is_active, p.is_featured,
@@ -385,7 +390,10 @@ export class ProductMysqlRepository implements IProductRepository {
         if (r.cost_nzd !== null && r.cost_nzd !== undefined) {
           costByProduct.set(r.product_id as number, Number(r.cost_nzd));
         }
-        stockByProduct.set(r.product_id as number, Number(r.quantity ?? 0));
+        // No stock row exports blank, so an untouched re-import doesn't create 0-qty rows.
+        if (r.quantity !== null && r.quantity !== undefined) {
+          stockByProduct.set(r.product_id as number, Number(r.quantity));
+        }
       }
     }
 
@@ -406,9 +414,10 @@ export class ProductMysqlRepository implements IProductRepository {
         description: (p.description as string | null) ?? null,
         is_active: Boolean(p.is_active),
         is_featured: Boolean(p.is_featured),
-        price_nzd: storeId ? priceByProduct.get(id) ?? null : null,
-        cost_nzd: storeId ? costByProduct.get(id) ?? null : null,
-        stock_quantity: storeId ? stockByProduct.get(id) ?? 0 : null,
+        store_id: storeId ?? null,
+        price_nzd: priceByProduct.get(id) ?? null,
+        cost_nzd: costByProduct.get(id) ?? null,
+        stock_quantity: stockByProduct.get(id) ?? null,
         image_filenames: imagesByProduct.get(id) ?? [],
       };
     });

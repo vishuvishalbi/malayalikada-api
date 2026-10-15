@@ -8,7 +8,7 @@ import { NotFoundError, ValidationError, ConflictError } from '../../shared/erro
 const PRODUCT_EXPORT_COLUMNS = [
   'barcode', 'name', 'category_id', 'primary_category', 'categories', 'brand',
   'unit', 'weight', 'supplier', 'description', 'is_active', 'is_featured',
-  'price_nzd', 'cost_nzd', 'stock_quantity', 'image_urls',
+  'store_id', 'price_nzd', 'cost_nzd', 'stock_quantity', 'image_urls',
 ] as const;
 
 export class ProductService {
@@ -173,6 +173,7 @@ export class ProductService {
         r.description,
         r.is_active ? 'true' : 'false',
         r.is_featured ? 'true' : 'false',
+        r.store_id,
         r.price_nzd,
         r.cost_nzd,
         r.stock_quantity,

@@ -43,10 +43,12 @@ export interface IProductExportRow {
   description: string | null;
   is_active: boolean;
   is_featured: boolean;
-  /** Store price; null when no store was requested or no pricing row exists. */
+  /** Store the price/cost/stock columns belong to; null when no active store exists. */
+  store_id: number | null;
+  /** Store price; null when no pricing row exists. */
   price_nzd: number | null;
   cost_nzd: number | null;
-  /** Store stock; null when no store was requested. */
+  /** Store stock; null when no stock row exists. */
   stock_quantity: number | null;
   /** Image filenames, ordered; the service maps them to public URLs. */
   image_filenames: string[];

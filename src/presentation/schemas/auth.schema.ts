@@ -7,7 +7,11 @@ export const registerSchema = z.object({
   first_name: z.string().min(1),
   last_name: z.string().min(1),
   email: z.string().email(),
-  phone: z.string().regex(nzMobileRe, 'Must be a valid NZ mobile (02X… or +64…)'),
+  // Optional (App Store 5.1.1(v)); a blank field counts as not given.
+  phone: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().trim().regex(nzMobileRe, 'Must be a valid NZ mobile (02X… or +64…)').optional(),
+  ),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   captcha_id: z.string().min(1),
   captcha_answer: z.string().min(1),

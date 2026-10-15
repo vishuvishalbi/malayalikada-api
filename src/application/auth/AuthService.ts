@@ -113,7 +113,7 @@ export class AuthService {
       first_name: string;
       last_name: string;
       email: string;
-      phone: string;
+      phone?: string;
       password: string;
       captcha_id: string;
       captcha_answer: string;
@@ -125,7 +125,7 @@ export class AuthService {
     const email = data.email.toLowerCase();
     const [existingEmail, existingPhone] = await Promise.all([
       this.customers.findByEmail(email),
-      this.customers.findByPhone(data.phone),
+      data.phone ? this.customers.findByPhone(data.phone) : null,
     ]);
     if (existingEmail) throw new ConflictError('An account with this email already exists');
     if (existingPhone) throw new ConflictError('An account with this mobile number already exists');
@@ -138,7 +138,7 @@ export class AuthService {
       first_name: data.first_name,
       last_name: data.last_name,
       email,
-      phone_number: data.phone,
+      phone_number: data.phone ?? null,
       preferred_store_id: null,
     });
 
