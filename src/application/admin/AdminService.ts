@@ -3,8 +3,9 @@ import { ICustomerRepository } from '../../domain/repositories/ICustomerReposito
 import { db } from '../../infrastructure/database/connection';
 import { RowDataPacket } from 'mysql2/promise';
 import { paginate } from '../../shared/utils';
-import { NotFoundError } from '../../shared/errors/AppError';
+import { NotFoundError, ValidationError } from '../../shared/errors/AppError';
 import bcrypt from 'bcrypt';
+import { toStaffView, toCustomerView } from './adminViews';
 
 export class AdminService {
   constructor(
@@ -56,11 +57,16 @@ export class AdminService {
     };
   }
 
-  listStaff(includeInactive = false) {
-    return this.staff.findAll(includeInactive);
+  private async assertRoleExists(role: string) {
+    if (!(await this.staff.roleExists(role))) throw new ValidationError(`Unknown role: ${role}`);
   }
 
-  async createStaff(data: { identifier: string; identifier_type: 'email' | 'mobile'; password: string; name: string; role: 'worker' | 'admin'; store_ids?: number[] }) {
+  async listStaff(includeInactive = false) {
+    return (await this.staff.findAll(includeInactive)).map(toStaffView);
+  }
+
+  async createStaff(data: { identifier: string; identifier_type: 'email' | 'mobile'; password: string; name: string; role: string; store_ids?: number[] }) {
+    await this.assertRoleExists(data.role);
     const hash = await bcrypt.hash(data.password, 10);
     const staffUser = await this.staff.create({
       identifier: data.identifier,
@@ -73,21 +79,24 @@ export class AdminService {
     if (data.store_ids && data.store_ids.length > 0) {
       await this.staff.setStoreIds(staffUser.id, data.store_ids);
     }
-    return this.staff.findById(staffUser.id)!;
+    return toStaffView((await this.staff.findById(staffUser.id))!);
   }
 
-  async updateStaff(id: number, data: { name?: string; role?: 'worker' | 'admin'; is_active?: boolean; store_ids?: number[] }) {
+  async updateStaff(id: number, data: { name?: string; role?: string; is_active?: boolean; store_ids?: number[] }) {
+    if (data.role !== undefined) await this.assertRoleExists(data.role);
     const { store_ids, ...staffData } = data;
     await this.staff.update(id, staffData as any);
     if (store_ids !== undefined) {
       await this.staff.setStoreIds(id, store_ids);
     }
-    return this.staff.findById(id);
+    const updated = await this.staff.findById(id);
+    return updated && toStaffView(updated);
   }
 
-  listCustomers(search?: string, page = 1, limit = 20) {
+  async listCustomers(search?: string, page = 1, limit = 20) {
     const { offset } = paginate(page, limit);
-    return this.customers.findAll(search, offset, limit);
+    const { items, total } = await this.customers.findAll(search, offset, limit);
+    return { items: items.map(toCustomerView), total };
   }
 
   async getCustomer(id: number) {
@@ -97,7 +106,7 @@ export class AdminService {
       'SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20',
       [id]
     );
-    return { ...customer, orders: orderRows };
+    return { ...toCustomerView(customer), orders: orderRows };
   }
 
   async analytics(filters: { from?: string; to?: string; storeId?: number }) {

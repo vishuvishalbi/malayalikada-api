@@ -2,11 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const isActive = vi.fn();
 const staffFindById = vi.fn();
+const staffPermissions = vi.fn();
 vi.mock('../../infrastructure/auth/tokenRegistry', () => ({
   tokenService: { isActive: (...args: any[]) => isActive(...args) },
 }));
 vi.mock('../../infrastructure/repositories/StaffMysqlRepository', () => ({
-  StaffMysqlRepository: class { findById = (...args: any[]) => staffFindById(...args); },
+  StaffMysqlRepository: class {
+    findById = (...args: any[]) => staffFindById(...args);
+    getPermissions = (...args: any[]) => staffPermissions(...args);
+  },
 }));
 
 import { authenticate } from './authenticate';
@@ -32,6 +36,7 @@ function makeReply() {
 beforeEach(() => {
   isActive.mockReset();
   staffFindById.mockReset();
+  staffPermissions.mockReset().mockResolvedValue([]);
 });
 
 describe('authenticate', () => {
@@ -72,6 +77,17 @@ describe('authenticate', () => {
     await authenticate(request, makeReply());
     expect(isActive).toHaveBeenCalledWith('j2', 'staff', 3);
     expect(request.user.storeIds).toEqual([4]);
+  });
+
+  it('takes role and permissions from the database, not the token', async () => {
+    isActive.mockResolvedValue(true);
+    staffFindById.mockResolvedValue({ is_active: 1, role: 'catalog_manager', store_ids: [] });
+    staffPermissions.mockResolvedValue(['products:create']);
+    const request = makeRequest({ sub: 3, role: 'admin', storeIds: [], jti: 'j2' });
+    await authenticate(request, makeReply());
+    expect(staffPermissions).toHaveBeenCalledWith('catalog_manager');
+    expect(request.user.role).toBe('catalog_manager');
+    expect(request.user.permissions).toEqual(['products:create']);
   });
 
   it('still rejects a registered staff token once the staff member is deactivated', async () => {

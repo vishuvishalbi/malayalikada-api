@@ -7,6 +7,7 @@ import { CsvImportService } from '../../application/products/CsvImportService';
 import { CsvImportLogRepository } from '../../infrastructure/repositories/CsvImportLogRepository';
 import { authenticate } from '../middleware/authenticate';
 import { optionalAuthenticate } from '../middleware/optionalAuthenticate';
+import { requirePermission } from '../middleware/requirePermission';
 import { requireRole } from '../middleware/requireRole';
 import { ValidationError, NotFoundError } from '../../shared/errors/AppError';
 
@@ -22,29 +23,29 @@ export async function productRoutes(app: FastifyInstance) {
   app.get('/products/:id', { preHandler: [optionalAuthenticate] }, ctrl.getById);
 
   // Admin
-  app.get('/products/export/csv', { preHandler: [authenticate, requireRole('admin')] }, ctrl.exportCsv);
-  app.post('/products', { preHandler: [authenticate, requireRole('admin')] }, ctrl.create);
-  app.put('/products/:id', { preHandler: [authenticate, requireRole('admin')] }, ctrl.update);
-  app.delete('/products/:id', { preHandler: [authenticate, requireRole('admin')] }, ctrl.softDelete);
-  app.post('/products/:id/images', { preHandler: [authenticate, requireRole('admin')] }, ctrl.uploadImage);
-  app.delete('/products/:id/images/:imageId', { preHandler: [authenticate, requireRole('admin')] }, ctrl.removeImage);
+  app.get('/products/export/csv', { preHandler: [authenticate, requirePermission('products:export')] }, ctrl.exportCsv);
+  app.post('/products', { preHandler: [authenticate, requirePermission('products:create')] }, ctrl.create);
+  app.put('/products/:id', { preHandler: [authenticate, requirePermission('products:update')] }, ctrl.update);
+  app.delete('/products/:id', { preHandler: [authenticate, requirePermission('products:delete')] }, ctrl.softDelete);
+  app.post('/products/:id/images', { preHandler: [authenticate, requirePermission('products:images')] }, ctrl.uploadImage);
+  app.delete('/products/:id/images/:imageId', { preHandler: [authenticate, requirePermission('products:images')] }, ctrl.removeImage);
 
   // CSV import routes
   const csvService = new CsvImportService();
   const csvLogs = new CsvImportLogRepository();
 
-  app.post('/products/import/csv', { preHandler: [authenticate, requireRole('admin')] }, async (request, reply) => {
+  app.post('/products/import/csv', { preHandler: [authenticate, requirePermission('products:import')] }, async (request, reply) => {
     const file = await request.file();
     if (!file) throw new ValidationError('No file uploaded');
     const buffer = await file.toBuffer();
     reply.send(await csvService.importFile(buffer, file.filename, request.user.sub));
   });
 
-  app.get('/products/import/logs', { preHandler: [authenticate, requireRole('admin')] }, async (_req, reply) => {
+  app.get('/products/import/logs', { preHandler: [authenticate, requirePermission('products:import')] }, async (_req, reply) => {
     reply.send(await csvLogs.findAll());
   });
 
-  app.get('/products/import/:importId/errors', { preHandler: [authenticate, requireRole('admin')] }, async (request, reply) => {
+  app.get('/products/import/:importId/errors', { preHandler: [authenticate, requirePermission('products:import')] }, async (request, reply) => {
     const { importId } = request.params as { importId: string };
     const log = await csvLogs.findById(Number(importId));
     if (!log || !log.error_report_filename) throw new NotFoundError('Error report not found');
@@ -60,7 +61,7 @@ export async function productRoutes(app: FastifyInstance) {
   const shopifyImportService = new ShopifyCsvImportService();
 
   app.post('/products/import/shopify-csv', {
-    preHandler: [authenticate, requireRole('admin')],
+    preHandler: [authenticate, requirePermission('products:import')],
   }, async (request, reply) => {
     const { store_id } = request.query as { store_id?: string };
     if (!store_id || isNaN(Number(store_id))) {
@@ -102,7 +103,7 @@ export async function productRoutes(app: FastifyInstance) {
   const eposNowImportService = new EposNowCsvImportService();
 
   app.post('/products/import/eposnow-categories-csv', {
-    preHandler: [authenticate, requireRole('admin')],
+    preHandler: [authenticate, requirePermission('products:import')],
   }, async (request, reply) => {
     const file = await request.file();
     if (!file) throw new ValidationError('No file uploaded');
@@ -111,7 +112,7 @@ export async function productRoutes(app: FastifyInstance) {
   });
 
   app.post('/products/import/eposnow-products-csv', {
-    preHandler: [authenticate, requireRole('admin')],
+    preHandler: [authenticate, requirePermission('products:import')],
   }, async (request, reply) => {
     const { store_id } = request.query as { store_id?: string };
     if (!store_id || isNaN(Number(store_id))) {

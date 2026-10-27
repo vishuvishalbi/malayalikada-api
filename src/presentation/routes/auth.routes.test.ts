@@ -6,7 +6,7 @@ import { AppError } from '../../shared/errors/AppError';
 
 const h = vi.hoisted(() => ({
   customers: { findById: vi.fn(), findByIdentifier: vi.fn(), findByEmail: vi.fn(), findByPhone: vi.fn(), create: vi.fn(), update: vi.fn() },
-  staff: { findById: vi.fn(), findByIdentifier: vi.fn(), getStoreIds: vi.fn() },
+  staff: { findById: vi.fn(), findByIdentifier: vi.fn(), getStoreIds: vi.fn(), getPermissions: vi.fn().mockResolvedValue([]) },
   deletion: { anonymizeCustomer: vi.fn() },
   tokens: { isActive: vi.fn(), issue: vi.fn(), retire: vi.fn(), evictUser: vi.fn() },
 }));

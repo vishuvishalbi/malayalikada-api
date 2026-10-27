@@ -26,6 +26,16 @@ export class StaffMysqlRepository implements IStaffRepository {
     return { ...r, store_ids: r.store_ids_csv ? String(r.store_ids_csv).split(',').map(Number) : [] } as IStaffUser;
   }
 
+  async getPermissions(role: string): Promise<string[]> {
+    const [rows] = await db.query<RowDataPacket[]>('SELECT permission FROM role_permissions WHERE role = ?', [role]);
+    return (rows as any[]).map(r => r.permission);
+  }
+
+  async roleExists(role: string): Promise<boolean> {
+    const [rows] = await db.query<RowDataPacket[]>('SELECT 1 FROM roles WHERE name = ?', [role]);
+    return rows.length > 0;
+  }
+
   async findAll(includeInactive = false): Promise<IStaffUser[]> {
     const where = includeInactive ? '' : 'WHERE su.is_active = 1';
     const [rows] = await db.query<RowDataPacket[]>(

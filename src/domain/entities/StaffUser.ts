@@ -4,7 +4,7 @@ export interface IStaffUser {
   identifier_type: 'email' | 'mobile';
   password_hash: string;
   name: string;
-  role: 'worker' | 'admin';
+  role: string;
   is_active: boolean;
   store_ids?: number[];
   created_at: Date;

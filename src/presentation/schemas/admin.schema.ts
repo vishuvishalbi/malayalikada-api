@@ -5,13 +5,13 @@ export const createStaffSchema = z.object({
   identifier_type: z.enum(['email', 'mobile']),
   password: z.string().min(8),
   name: z.string().min(1).max(150),
-  role: z.enum(['worker', 'admin']),
+  role: z.string().trim().min(1).max(32),
   store_ids: z.array(z.number().int().positive()).optional(),
 });
 
 export const updateStaffSchema = z.object({
   name: z.string().max(150).optional(),
-  role: z.enum(['worker', 'admin']).optional(),
+  role: z.string().trim().min(1).max(32).optional(),
   is_active: z.boolean().optional(),
   store_ids: z.array(z.number().int().positive()).optional(),
 });

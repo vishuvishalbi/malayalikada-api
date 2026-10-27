@@ -6,6 +6,8 @@ export interface IStaffRepository {
   findAll(includeInactive?: boolean): Promise<IStaffUser[]>;
   create(data: Omit<IStaffUser, 'id' | 'created_at' | 'updated_at'>): Promise<IStaffUser>;
   update(id: number, data: Partial<Omit<IStaffUser, 'id' | 'created_at' | 'updated_at'>>): Promise<IStaffUser | null>;
+  getPermissions(role: string): Promise<string[]>;
+  roleExists(role: string): Promise<boolean>;
   getStoreIds(staffId: number): Promise<number[]>;
   setStoreIds(staffId: number, storeIds: number[]): Promise<void>;
 }

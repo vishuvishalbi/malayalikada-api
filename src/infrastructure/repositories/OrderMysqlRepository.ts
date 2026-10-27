@@ -7,6 +7,9 @@ import { ValidationError } from '../../shared/errors/AppError';
 
 const CUSTOMER_NAME_EXPR = "CONCAT(c.first_name, ' ', c.last_name)";
 
+/** Order items sent to clients; omits the internal cost snapshot (`unit_cost_nzd`) and reservation state. */
+export const ORDER_ITEM_COLUMNS = 'oi.id, oi.order_id, oi.product_id, oi.quantity, oi.unit_price_nzd';
+
 export class OrderMysqlRepository implements IOrderRepository {
   async create(
     order: Omit<IOrder, 'id' | 'created_at' | 'updated_at'>,
@@ -207,7 +210,7 @@ export class OrderMysqlRepository implements IOrderRepository {
     );
     if (!rows[0]) return null;
     const [itemRows] = await db.query<RowDataPacket[]>(
-      `SELECT oi.*, p.name AS product_name FROM order_items oi
+      `SELECT ${ORDER_ITEM_COLUMNS}, p.name AS product_name FROM order_items oi
        LEFT JOIN products p ON p.id = oi.product_id
        WHERE oi.order_id = ?`,
       [id]
@@ -231,7 +234,7 @@ export class OrderMysqlRepository implements IOrderRepository {
     );
     if (!rows[0]) return null;
     const [itemRows] = await db.query<RowDataPacket[]>(
-      `SELECT oi.*, p.name AS product_name FROM order_items oi
+      `SELECT ${ORDER_ITEM_COLUMNS}, p.name AS product_name FROM order_items oi
        LEFT JOIN products p ON p.id = oi.product_id
        WHERE oi.order_id = ?`,
       [id]
@@ -261,7 +264,7 @@ export class OrderMysqlRepository implements IOrderRepository {
     const orderIds = (rows as any[]).map(r => r.id);
     const itemPlaceholders = orderIds.map(() => '?').join(',');
     const [itemRows] = await db.query<RowDataPacket[]>(
-      `SELECT oi.*, p.name AS product_name FROM order_items oi
+      `SELECT ${ORDER_ITEM_COLUMNS}, p.name AS product_name FROM order_items oi
        LEFT JOIN products p ON p.id = oi.product_id
        WHERE oi.order_id IN (${itemPlaceholders})`,
       orderIds

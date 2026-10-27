@@ -8,9 +8,9 @@ import { UnauthorizedError, ConflictError, NotFoundError, ValidationError } from
 import { config } from '../../shared/config';
 import { TokenService } from './TokenService';
 
-type Role = 'customer' | 'worker' | 'admin';
+type Role = string;
 
-const MENUS: Record<Role, Array<{ key: string; label: string; icon: string }>> = {
+const MENUS: Record<string, Array<{ key: string; label: string; icon: string }>> = {
   customer: [
     { key: 'home',         label: 'Home',         icon: 'home' },
     { key: 'categories',   label: 'Categories',   icon: 'grid' },
@@ -35,6 +35,10 @@ const MENUS: Record<Role, Array<{ key: string; label: string; icon: string }>> =
     { key: 'customers',     label: 'Customers',     icon: 'user-check' },
     { key: 'item-requests', label: 'Item Requests', icon: 'clipboard' },
     { key: 'import',        label: 'CSV Import',    icon: 'upload' },
+  ],
+  catalog_manager: [
+    { key: 'products', label: 'Products', icon: 'box' },
+    { key: 'more',     label: 'More',     icon: 'menu' },
   ],
 };
 
@@ -202,7 +206,7 @@ export class AuthService {
         preferredStoreId: null,
         storeIds,
       },
-      menus: MENUS[staffUser.role],
+      menus: MENUS[staffUser.role] ?? [],
     };
   }
 
@@ -228,7 +232,7 @@ export class AuthService {
     return {
       token,
       user: { id: staffUser.id, name: staffUser.name, role: staffUser.role as Role, preferredStoreId: null, storeIds },
-      menus: MENUS[staffUser.role],
+      menus: MENUS[staffUser.role] ?? [],
     };
   }
 
